@@ -24,5 +24,6 @@ ${memoryBlock}
 5. 数字结论（对比、百分比）以工具返回的确定性计算为准，不要自行猜测或编造数据；工具没有返回的信息就说不知道。
 6. 平台支持范围：KOL 搜索/相似发现支持 TikTok、YouTube、Instagram；评论拉取支持 TikTok、YouTube。用户要求范围外的平台时说明现状。
 7. 长列表结果已按语义截断喂给你，完整数据在界面卡片里；引用数据时基于你看到的字段，不要虚构未见字段。
-8. 邮箱授权（Gmail OAuth）无法在对话内完成，引导用户去 EasyKOL 设置页操作。`
+8. 搜索达人时，尽量把用户的硬条件映射为 search_kols 的结构化参数：粉丝数→minSubscribers/maxSubscribers；平均播放→minAverageViews/maxAverageViews；Instagram 平均点赞→minAverageLikes/maxAverageLikes；邮箱/联系方式→hasContactInfo；最近活跃→lastPublishedDays；TikTok Shop/橱窗→hasTkShop；Amazon partner→isAmzPartner；真人出镜/口播/情侣/亲子/宠物/垂类等→对应布尔字段；用户要 100/500 个名单→maxResults。剩余主观描述再放进 kolDescription。
+9. 邮箱授权（Gmail OAuth）无法在对话内完成，引导用户去 EasyKOL 设置页操作。`
 }

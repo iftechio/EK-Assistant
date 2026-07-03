@@ -32,7 +32,12 @@ function KolListCard({ data }: { data: any }) {
   return (
     <div className="card">
       <div className="card-title">
-        KOL 结果 {data.total != null ? `（共 ${data.total}）` : `（${kols.length}）`}
+        <span>
+          KOL 结果 {data.total != null ? `（共 ${data.total}，返回 ${data.returned ?? kols.length}）` : `（${kols.length}）`}
+        </span>
+        <button className="ghost" disabled={!kols.length} onClick={() => downloadKolsCsv(kols)}>
+          ⬇ 下载 CSV
+        </button>
       </div>
       <div className="table-scroll">
         <table>
@@ -43,20 +48,23 @@ function KolListCard({ data }: { data: any }) {
               <th>粉丝</th>
               <th>地区</th>
               <th>邮箱</th>
+              <th>链接</th>
             </tr>
           </thead>
           <tbody>
-            {kols.slice(0, 50).map((k, i) => (
+            {kols.slice(0, 100).map((k, i) => (
               <tr key={i}>
                 <td>{k.title ?? k.nickName ?? k.name ?? '-'}</td>
                 <td>{k.platformAccount ?? k.account ?? k.uniqueId ?? '-'}</td>
                 <td>{fmt(k.subscribers ?? k.followers)}</td>
                 <td>{k.region ?? k.country ?? '-'}</td>
                 <td>{k.email ?? '-'}</td>
+                <td>{k.url ?? k.link ?? k.postLink ?? '-'}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        {kols.length > 100 && <div className="muted">界面仅预览前 100 条，下载 CSV 查看全部。</div>}
       </div>
     </div>
   )
@@ -163,4 +171,39 @@ function fmt(n: unknown): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return String(n)
+}
+
+function downloadKolsCsv(kols: any[]) {
+  const headers = [
+    'name',
+    'account',
+    'followers',
+    'region',
+    'email',
+    'platform',
+    'url',
+    'description',
+  ]
+  const rows = kols.map((k) => [
+    k.title ?? k.nickName ?? k.nickname ?? k.name ?? '',
+    k.platformAccount ?? k.account ?? k.uniqueId ?? k.authorUniqueId ?? '',
+    k.subscribers ?? k.followers ?? k.followerCount ?? '',
+    k.region ?? k.country ?? '',
+    k.email ?? '',
+    k.platform ?? '',
+    k.url ?? k.link ?? k.postLink ?? '',
+    k.description ?? '',
+  ])
+  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\n')
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `kols-${Date.now()}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+function csvCell(value: unknown): string {
+  const text = String(value ?? '')
+  return `"${text.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`
 }
