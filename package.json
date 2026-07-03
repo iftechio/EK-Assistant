@@ -1,0 +1,17 @@
+{
+  "name": "ek-assistant",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:gateway": "pnpm --filter @ek-assistant/gateway dev",
+    "dev:web": "pnpm --filter @ek-assistant/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "packageManager": "pnpm@9.12.0"
+}
