@@ -29,43 +29,77 @@ export default function ToolCard({ display }: { display: ToolDisplay }) {
 
 function KolListCard({ data }: { data: any }) {
   const kols: any[] = data.kols ?? []
+  const [expanded, setExpanded] = useState(false)
+  const emailCount = kols.filter((k) => getEmail(k)).length
+  const preview = kols.slice(0, 12)
   return (
-    <div className="card">
-      <div className="card-title">
-        <span>
-          KOL 结果 {data.total != null ? `（共 ${data.total}，返回 ${data.returned ?? kols.length}）` : `（${kols.length}）`}
-        </span>
-        <button className="ghost" disabled={!kols.length} onClick={() => downloadKolsCsv(kols)}>
-          ⬇ 下载 CSV
-        </button>
+    <div className="card kol-card">
+      <div className="kol-card-head">
+        <div>
+          <div className="card-title">KOL 结果</div>
+          <div className="kol-summary">
+            共 {data.total ?? kols.length} 个，已返回 {data.returned ?? kols.length} 个
+            {emailCount ? `，${emailCount} 个有邮箱` : ''}
+          </div>
+        </div>
+        <div className="kol-actions">
+          <button className="ghost" disabled={!kols.length} onClick={() => setExpanded((v) => !v)}>
+            {expanded ? '收起表格' : '展开表格'}
+          </button>
+          <button className="ghost" disabled={!kols.length} onClick={() => downloadKolsCsv(kols)}>
+            下载 CSV
+          </button>
+        </div>
       </div>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>账号</th>
-              <th>粉丝</th>
-              <th>地区</th>
-              <th>邮箱</th>
-              <th>链接</th>
-            </tr>
-          </thead>
-          <tbody>
-            {kols.slice(0, 100).map((k, i) => (
-              <tr key={i}>
-                <td>{k.title ?? k.nickName ?? k.name ?? '-'}</td>
-                <td>{k.platformAccount ?? k.account ?? k.uniqueId ?? '-'}</td>
-                <td>{fmt(k.subscribers ?? k.followers)}</td>
-                <td>{k.region ?? k.country ?? '-'}</td>
-                <td>{k.email ?? '-'}</td>
-                <td>{k.url ?? k.link ?? k.postLink ?? '-'}</td>
+
+      <div className="kol-grid">
+        {preview.map((k, i) => (
+          <div className="kol-item" key={`${getAccount(k)}-${i}`}>
+            <div className="kol-avatar">{initialOf(getName(k))}</div>
+            <div className="kol-main">
+              <div className="kol-name">{getName(k)}</div>
+              <div className="kol-account">{getAccount(k)}</div>
+              <div className="kol-meta">
+                <span>{fmt(getFollowers(k))} 粉丝</span>
+                <span>{getRegion(k)}</span>
+                {getEmail(k) && <span>有邮箱</span>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {kols.length > preview.length && (
+        <div className="kol-more">还有 {kols.length - preview.length} 个结果，下载 CSV 查看完整名单。</div>
+      )}
+
+      {expanded && (
+        <div className="table-scroll compact-table">
+          <table>
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>账号</th>
+                <th>粉丝</th>
+                <th>地区</th>
+                <th>邮箱</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {kols.length > 100 && <div className="muted">界面仅预览前 100 条，下载 CSV 查看全部。</div>}
-      </div>
+            </thead>
+            <tbody>
+              {kols.slice(0, 100).map((k, i) => (
+                <tr key={i}>
+                  <td>{getName(k)}</td>
+                  <td>{getAccount(k)}</td>
+                  <td>{fmt(getFollowers(k))}</td>
+                  <td>{getRegion(k)}</td>
+                  <td>{getEmail(k) || '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {kols.length > 100 && <div className="muted">表格仅预览前 100 条，下载 CSV 查看全部。</div>}
+        </div>
+      )}
     </div>
   )
 }
@@ -171,6 +205,30 @@ function fmt(n: unknown): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return String(n)
+}
+
+function getName(k: any): string {
+  return k.title ?? k.nickName ?? k.nickname ?? k.name ?? '未命名达人'
+}
+
+function getAccount(k: any): string {
+  return k.platformAccount ?? k.account ?? k.uniqueId ?? k.authorUniqueId ?? '-'
+}
+
+function getFollowers(k: any): unknown {
+  return k.subscribers ?? k.followers ?? k.followerCount
+}
+
+function getRegion(k: any): string {
+  return k.region ?? k.country ?? '地区未知'
+}
+
+function getEmail(k: any): string {
+  return k.email ?? ''
+}
+
+function initialOf(name: string): string {
+  return name.trim().slice(0, 1).toUpperCase() || 'K'
 }
 
 function downloadKolsCsv(kols: any[]) {

@@ -367,6 +367,91 @@ textarea {
   align-items: center;
   gap: 8px;
 }
+.kol-card {
+  padding: 18px;
+}
+.kol-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.kol-card-head .card-title {
+  margin-bottom: 4px;
+}
+.kol-summary,
+.kol-more {
+  font-size: 12px;
+  color: var(--subtle);
+}
+.kol-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.kol-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.kol-item {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #f0f1f2;
+  border-radius: 12px;
+  background: #fffdfb;
+}
+.kol-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.kol-main {
+  min-width: 0;
+}
+.kol-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kol-account {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kol-meta {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kol-meta span {
+  font-size: 11px;
+  color: var(--muted);
+  background: #f7f8f9;
+  border-radius: 999px;
+  padding: 3px 7px;
+}
+.kol-more {
+  margin-top: 12px;
+}
+.compact-table {
+  margin-top: 14px;
+}
 .table-scroll {
   overflow-x: auto;
 }
@@ -597,6 +682,18 @@ details summary {
     bottom: 10px;
     transform: none;
     font-size: 44px;
+  }
+  .kol-card-head {
+    flex-direction: column;
+  }
+  .kol-actions {
+    width: 100%;
+  }
+  .kol-actions button {
+    flex: 1;
+  }
+  .kol-grid {
+    grid-template-columns: 1fr;
   }
   .composer-wrap {
     padding: 8px 16px 86px;
