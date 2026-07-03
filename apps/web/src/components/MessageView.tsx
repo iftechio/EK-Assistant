@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../types'
 import ToolCard from './ToolCard'
 import ConfirmCard from './ConfirmCard'
+import MarkdownText from './MarkdownText'
 
 export default function MessageView({ message }: { message: ChatMessage }) {
   return (
@@ -19,7 +20,11 @@ export default function MessageView({ message }: { message: ChatMessage }) {
         {message.confirmations.map((c, i) => (
           <ConfirmCard key={i} confirmation={c} />
         ))}
-        {message.text && <div className="bubble">{message.text}</div>}
+        {message.text && (
+          <div className="bubble">
+            <MarkdownText text={message.text} />
+          </div>
+        )}
         {message.error && <div className="error-text">⚠️ {message.error}</div>}
       </div>
     </div>
