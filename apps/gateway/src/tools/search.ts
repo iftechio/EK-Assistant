@@ -200,9 +200,11 @@ export const findSimilarKols = defineTool({
     if (polled.status === 'FAILED') {
       return { forModel: { projectId, taskId: task.id, error: `相似发现失败：${polled.message}` } }
     }
-    const results = await ctx.backend.post<any>('/api/similars/single-search', {
-      taskId: task.id,
-    })
+    // 与 easykol-web 手动操作一致：TikTok 走 unionSearch，YouTube/Instagram 走 singleSearch
+    const results =
+      input.platform === 'TIKTOK'
+        ? await ctx.backend.get<any>('/api/similars/unionSearch', { projectId, hasPost: true })
+        : await ctx.backend.post<any>('/api/similars/singleSearch', { taskId: task.id, hasPost: true })
     const list: any[] = Array.isArray(results) ? results : (results?.data ?? [])
     return {
       forModel: {

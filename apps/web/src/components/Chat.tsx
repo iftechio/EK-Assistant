@@ -5,31 +5,49 @@ import MessageView from './MessageView'
 
 const STARTER_CARDS = [
   {
-    className: 'hero-card primary',
     title: '搜索达人',
     desc: '按平台、地区、粉丝量和内容风格筛选候选人',
-    emoji: '🎯',
+    icon: (
+      <>
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </>
+    ),
     prompt: '帮我在 TikTok 上找 10 个美妆类达人，粉丝量 1w-50w',
   },
   {
-    className: 'hero-card',
     title: '相似达人',
     desc: '给一个账号，继续扩展同类达人池',
-    emoji: '👥',
+    icon: (
+      <>
+        <circle cx="9" cy="8" r="3.5" />
+        <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+        <path d="M16 4.6a3.5 3.5 0 0 1 0 6.8" />
+        <path d="M18.5 14.4c1.9.9 3 2.6 3 5.6" />
+      </>
+    ),
     prompt: '帮我找和这个达人相似的账号：',
   },
   {
-    className: 'hero-card',
     title: '邮件外联',
     desc: '基于名单批量生成合作邀约',
-    emoji: '📮',
+    icon: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2.5" />
+        <path d="m3.5 7 8.5 6 8.5-6" />
+      </>
+    ),
     prompt: '帮我给收藏的达人发合作邀约邮件',
   },
   {
-    className: 'hero-card',
     title: '不知道从哪开始？',
     desc: '从目标、预算和市场开始拆解任务',
-    emoji: '❓',
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="m15.5 8.5-2 5-5 2 2-5z" />
+      </>
+    ),
     prompt: '我是第一次做 KOL 投放，请一步步引导我',
   },
 ]
@@ -46,6 +64,8 @@ export default function Chat({
   const [busy, setBusy] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [cost, setCost] = useState<{ spent: number; cap: number } | null>(null)
+  const [showJump, setShowJump] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
   const currentSession = useRef<string | null>(sessionId)
   const justCreatedSession = useRef<string | null>(null)
   const turnStartedAt = useRef<number | null>(null)
@@ -197,7 +217,15 @@ export default function Chat({
 
   return (
     <main className="chat">
-      <div className="message-list">
+      <div
+        className="message-list"
+        ref={listRef}
+        onScroll={() => {
+          const el = listRef.current
+          if (!el) return
+          setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 240)
+        }}
+      >
         {messages.length === 0 && (
           <div className="hero">
             <div className="hero-kicker">EasyKOL Assistant</div>
@@ -205,12 +233,22 @@ export default function Chat({
             <p className="hero-greeting">选择一个常用任务，或直接描述你的达人搜索、外联和投放分析需求。</p>
             <div className="hero-cards">
               {STARTER_CARDS.map((c) => (
-                <button key={c.title} className={c.className} onClick={() => pickStarter(c.prompt)}>
-                  <div className="hero-card-emoji">{c.emoji}</div>
-                  <div>
+                <button key={c.title} className="hero-card" onClick={() => pickStarter(c.prompt)}>
+                  <div className="hero-card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      {c.icon}
+                    </svg>
+                  </div>
+                  <div className="hero-card-text">
                     <div className="hero-card-title">{c.title}</div>
                     <div className="hero-card-desc">{c.desc}</div>
                   </div>
+                  <span className="hero-card-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14" />
+                      <path d="m13 6 6 6-6 6" />
+                    </svg>
+                  </span>
                 </button>
               ))}
             </div>
@@ -226,6 +264,18 @@ export default function Chat({
         ))}
         <div ref={bottomRef} />
       </div>
+      {showJump && (
+        <button
+          className="jump-bottom"
+          aria-label="回到底部"
+          onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14" />
+            <path d="m19 12-7 7-7-7" />
+          </svg>
+        </button>
+      )}
       <div className="composer-wrap">
         <div className="composer-pill">
           <textarea

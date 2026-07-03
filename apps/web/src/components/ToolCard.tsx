@@ -215,12 +215,23 @@ function getAccount(k: any): string {
   return k.platformAccount ?? k.account ?? k.uniqueId ?? k.authorUniqueId ?? '-'
 }
 
+/** similars 等接口返回 kolInfo，粉丝/地区在嵌套的平台对象里 */
+function nestedUser(k: any) {
+  return k.tiktokUser ?? k.youtubeChannel ?? k.instagramUser
+}
+
 function getFollowers(k: any): unknown {
-  return k.subscribers ?? k.followers ?? k.followerCount
+  return (
+    k.subscribers ??
+    k.followers ??
+    k.followerCount ??
+    nestedUser(k)?.numericSubscriberCount ??
+    nestedUser(k)?.followerCount
+  )
 }
 
 function getRegion(k: any): string {
-  return k.region ?? k.country ?? '地区未知'
+  return k.region ?? k.country ?? nestedUser(k)?.country ?? nestedUser(k)?.region ?? '地区未知'
 }
 
 function getEmail(k: any): string {
@@ -243,10 +254,10 @@ function downloadKolsCsv(kols: any[]) {
     'description',
   ]
   const rows = kols.map((k) => [
-    k.title ?? k.nickName ?? k.nickname ?? k.name ?? '',
-    k.platformAccount ?? k.account ?? k.uniqueId ?? k.authorUniqueId ?? '',
-    k.subscribers ?? k.followers ?? k.followerCount ?? '',
-    k.region ?? k.country ?? '',
+    getName(k),
+    getAccount(k),
+    getFollowers(k) ?? '',
+    k.region ?? k.country ?? nestedUser(k)?.country ?? nestedUser(k)?.region ?? '',
     k.email ?? '',
     k.platform ?? '',
     k.url ?? k.link ?? k.postLink ?? '',

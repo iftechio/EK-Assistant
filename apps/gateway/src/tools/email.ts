@@ -16,7 +16,11 @@ export const manageEmailTemplate = defineTool({
     '管理 outreach 邮件模板：列出/查看/创建/更新/删除模板，以及配置自动跟进（followup）邮件。模板正文支持变量占位。每用户最多 8 个模板。这只是保存草稿，不会发送任何邮件。',
   permission: 'write_logged',
   inputSchema: z.object({
-    action: z.enum(['list', 'get', 'create', 'update', 'delete', 'set_followups', 'get_followups']),
+    action: z
+      .enum(['list', 'get', 'create', 'update', 'delete', 'set_followups', 'get_followups'])
+      .describe(
+        '操作类型，只能取这些值：list=列出模板 / get=查看单个 / create=创建 / update=更新 / delete=删除 / set_followups=配置跟进 / get_followups=查看跟进',
+      ),
     templateId: z.string().optional().describe('get/update/delete/set_followups 时必填'),
     name: z.string().max(100).optional(),
     subject: z.string().max(255).optional(),
@@ -60,10 +64,11 @@ export const manageEmailTemplate = defineTool({
         return { forModel: { ...t, content: truncate(t.content ?? '', 2000) }, display: { kind: 'email-template', data: t } }
       }
       case 'create': {
+        // 防止建出空模板被批量发送：subject/content 必填
         const t = await ctx.backend.post<EmailTemplate>('/api/emails/templates', {
           name: must(input.name, 'name'),
-          subject: input.subject,
-          content: input.content,
+          subject: must(input.subject, 'subject'),
+          content: must(input.content, 'content'),
           cc: input.cc,
         })
         return { forModel: compact(t), display: { kind: 'email-template', data: t } }
@@ -110,7 +115,9 @@ export const sendOutreachBatch = defineTool({
       .array(z.object({ email: z.string(), nickname: z.string().optional() }))
       .min(1)
       .max(1000)
-      .describe('收件人列表'),
+      .describe(
+        '收件人列表。每项必须带 email（取达人数据里的 email 字段），可选 nickname 用于称呼；没有邮箱的达人不能加入，直接跳过并在回复里说明。不接受 kolId。',
+      ),
     usingEmail: z.string().optional().describe('指定发信邮箱；不传用默认'),
     scheduledSendAtHours: z.number().int().min(0).max(24).optional().describe('延迟 N 小时发送，0/不传为立即'),
     sendDelaySeconds: z.number().int().min(60).max(3600).optional().describe('封与封之间的间隔秒数，默认300'),

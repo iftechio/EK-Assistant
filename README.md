@@ -31,7 +31,6 @@ apps/web       React 对话界面：Supabase 登录 + SSE 流式 + 确认卡片 
 
 ## 与方案的已知偏差
 
-- **评论接口为同步实现**（`POST /api/videoComments/fetch|export`，maxCount≤1000）：新增 TaskType 枚举值需要 Prisma 迁移，本期不动 schema；待枚举扩充后迁移到统一 create→poll 模式。
 - **效果归因的基线**取自该达人其它已追踪发布（而非 KOL 记录里的历史视频 JSON）；后者等 backend 暴露只读接口后切换。
 - **不做每日摘要定时推送**：方案里的 Scheduler recipe 已移除，外联/投放数据由用户在会话里主动查询。
 - 工具层 backend client 为手写轻量封装；`pnpm --filter @ek-assistant/gateway openapi` 可在 backend 本地运行时生成 OpenAPI 类型（后续迭代接入）。

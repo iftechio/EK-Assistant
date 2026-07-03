@@ -12,13 +12,20 @@ export async function ensureProject(ctx: ToolContext, projectId?: string): Promi
 
 /** KOL 结果的语义截断：只保留模型需要的关键字段（完整数据走 display 卡片） */
 export function compactKol(item: Record<string, any>): Record<string, unknown> {
+  // similars 等接口返回 kolInfo，粉丝/地区在嵌套的平台对象里（与 easykol-web adapters.ts 取法一致）
+  const nested = item.tiktokUser ?? item.youtubeChannel ?? item.instagramUser
   return pruneUndefined({
     kolId: item.id ?? item.kolId,
-    name: item.title ?? item.nickName ?? item.nickname ?? item.name,
+    name: item.title ?? item.nickName ?? item.nickname ?? item.name ?? nested?.title,
     account: item.platformAccount ?? item.uniqueId ?? item.authorUniqueId,
     platform: item.platform,
-    followers: item.subscribers ?? item.followers ?? item.followerCount,
-    region: item.region ?? item.country,
+    followers:
+      item.subscribers ??
+      item.followers ??
+      item.followerCount ??
+      nested?.numericSubscriberCount ??
+      nested?.followerCount,
+    region: item.region ?? item.country ?? nested?.country ?? nested?.region,
     email: item.email,
     score: item.score,
     description: truncate(String(item.description ?? ''), 150) || undefined,

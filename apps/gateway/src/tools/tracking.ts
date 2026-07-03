@@ -118,6 +118,7 @@ const TASK_TYPES = [
   'AUDIENCE_ANALYSIS',
   'COMPETITOR_TRACK',
   'KOL_EMAIL',
+  'VIDEO_COMMENTS',
 ] as const
 
 export const listMyTasks = defineTool({

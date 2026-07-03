@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ChatMessage } from '../types'
 import ToolCard from './ToolCard'
 import ConfirmCard from './ConfirmCard'
@@ -15,62 +16,109 @@ export default function MessageView({
   if (message.role === 'assistant') {
     return (
       <section className={`assistant-turn ${active ? 'active' : ''}`}>
-        <div className="assistant-turn-status">
-          <span>{active ? '处理中' : '已处理'}</span>
-          {(active || message.processedSeconds) && (
-            <span>{active ? elapsedSeconds : message.processedSeconds}s</span>
-          )}
+        <div className="turn-gutter">
+          <img className="turn-avatar" src="/ek-icon.png" alt="" />
         </div>
-        <div className="assistant-turn-rule" />
+        <div className="turn-body">
+          {(message.activities.length > 0 || active) && (
+            <StepsPanel message={message} active={active} elapsedSeconds={elapsedSeconds} />
+          )}
 
-        {message.text && (
-          <div className={`assistant-prose ${active ? 'streaming' : ''}`}>
-            <MarkdownText text={message.text} />
-          </div>
-        )}
+          {message.text && (
+            <div className={`assistant-prose ${active ? 'streaming' : ''}`}>
+              <MarkdownText text={message.text} />
+            </div>
+          )}
 
-        {message.activities.map((a, i) => (
-          <div key={i} className={`activity-row ${a.status}`}>
-            <span className="activity-icon">{a.status === 'running' ? '⌁' : '✓'}</span>
-            <span>
-              {a.status === 'running' ? '正在执行' : '已完成'} {toolLabel(a.toolName)}
-              {a.estimatedQuota ? ` · 预估消耗 ${a.estimatedQuota} 配额` : ''}
-            </span>
-            {a.display && <ToolCard display={a.display} />}
-          </div>
-        ))}
-
-        {message.confirmations.map((c, i) => (
-          <ConfirmCard key={i} confirmation={c} />
-        ))}
-        {message.error && <div className="error-text">⚠️ {message.error}</div>}
+          {message.confirmations.map((c, i) => (
+            <ConfirmCard key={i} confirmation={c} />
+          ))}
+          {message.error && <div className="error-text">⚠️ {message.error}</div>}
+        </div>
       </section>
     )
   }
 
   return (
-    <div className={`message ${message.role}`}>
-      <div className="avatar">{message.role === 'user' ? '我' : 'EK'}</div>
-      <div className="bubble-area">
-        {message.activities.map((a, i) => (
-          <div key={i} className="tool-activity">
-            <span className={`tool-chip ${a.status}`}>
-              {a.status === 'running' ? '⏳' : '✅'} {toolLabel(a.toolName)}
-              {a.estimatedQuota ? `（预估消耗 ${a.estimatedQuota} 配额）` : ''}
-            </span>
-            {a.display && <ToolCard display={a.display} />}
-          </div>
-        ))}
-        {message.confirmations.map((c, i) => (
-          <ConfirmCard key={i} confirmation={c} />
-        ))}
-        {message.text && (
-          <div className="bubble">
-            <MarkdownText text={message.text} />
-          </div>
-        )}
-        {message.error && <div className="error-text">⚠️ {message.error}</div>}
+    <div className="user-note">
+      <div className="user-note-avatar">我</div>
+      <div className="user-note-chip">
+        <MarkdownText text={message.text} />
       </div>
+    </div>
+  )
+}
+
+/** 工具执行过程折叠面板：步骤行常显，结果卡片点击展开 */
+function StepsPanel({
+  message,
+  active,
+  elapsedSeconds,
+}: {
+  message: ChatMessage
+  active: boolean
+  elapsedSeconds: number
+}) {
+  const hasCards = message.activities.some((a) => a.display)
+  const [expanded, setExpanded] = useState(false)
+  const seconds = active ? elapsedSeconds : message.processedSeconds
+
+  return (
+    <div className={`steps-panel ${active ? 'active' : ''}`}>
+      <button
+        className="steps-head"
+        onClick={() => hasCards && setExpanded((v) => !v)}
+        disabled={!hasCards}
+      >
+        <span className="steps-title">
+          {active ? '处理中' : '已处理'}
+          {seconds ? ` · ${seconds}s` : ''}
+        </span>
+        {hasCards && (
+          <span className={`steps-chevron ${expanded ? 'open' : ''}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </span>
+        )}
+      </button>
+
+      {message.activities.map((a, i) => (
+        <div key={i} className="steps-item">
+          <div className={`step-row ${a.status}`}>
+            <span className="step-icon">
+              {a.status === 'running' ? (
+                <span className="step-spinner" />
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              )}
+            </span>
+            <span className="step-label">
+              {toolLabel(a.toolName)}
+              {a.status === 'running' ? ' 执行中' : ' 已完成'}
+              {a.estimatedQuota ? ` · 预估消耗 ${a.estimatedQuota} 配额` : ''}
+            </span>
+          </div>
+          {expanded && a.display && (
+            <div className="step-card">
+              <ToolCard display={a.display} />
+            </div>
+          )}
+        </div>
+      ))}
+
+      {active && message.activities.length === 0 && (
+        <div className="steps-item">
+          <div className="step-row running">
+            <span className="step-icon">
+              <span className="step-spinner" />
+            </span>
+            <span className="step-label">思考中…</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

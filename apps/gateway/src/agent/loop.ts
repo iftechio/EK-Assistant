@@ -67,6 +67,8 @@ export async function runAgentTurn(args: {
             return await executeWithGate(t, input, ctx, store)
           } catch (err) {
             // 工具失败喂回模型，让它向用户解释/换路子，而不是整轮崩掉
+            // 同时补发 tool-result，否则前端工具卡片会永远停在"正在执行"
+            emit({ type: 'tool-result', toolName: t.name })
             return { error: err instanceof Error ? err.message : String(err) }
           }
         },
@@ -84,7 +86,8 @@ export async function runAgentTurn(args: {
     system += `\n\n[早前对话摘要]\n${session.context_summary}`
   }
 
-  const messages: ModelMessage[] = [...history, { role: 'user', content: userMessage }]
+  // history 已包含开头落库的本轮用户消息，不能再拼一次，否则模型会收到重复的 user 消息
+  const messages: ModelMessage[] = [...history]
 
   const pool = getModelPool()
   let lastError: unknown

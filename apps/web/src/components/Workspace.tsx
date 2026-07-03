@@ -61,14 +61,25 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
             setHistoryOpen(false)
           }}
         >
-          <span className="rail-icon">＋</span>
+          <span className="rail-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+              <path d="M12 9v6" />
+              <path d="M9 12h6" />
+            </svg>
+          </span>
           新会话
         </button>
         <button
           className={`rail-btn ${historyOpen ? 'active' : ''}`}
           onClick={() => setHistoryOpen((v) => !v)}
         >
-          <span className="rail-icon">🕘</span>
+          <span className="rail-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3.5 2" />
+            </svg>
+          </span>
           历史
         </button>
       </nav>
