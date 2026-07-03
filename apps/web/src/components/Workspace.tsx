@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { listSessions } from '../api'
 import type { SessionSummary } from '../types'
 import Chat from './Chat'
@@ -6,6 +6,9 @@ import Chat from './Chat'
 export default function Workspace({ userEmail }: { userEmail: string }) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const railRef = useRef<HTMLElement>(null)
+  const historyRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -20,35 +23,79 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
     refresh()
   }, [refresh])
 
+  useEffect(() => {
+    if (!historyOpen) return
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (historyRef.current?.contains(target) || railRef.current?.contains(target)) return
+      setHistoryOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHistoryOpen(false)
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [historyOpen])
+
   return (
     <div className="workspace">
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <span className="logo">EK-Assistant</span>
-          <button className="ghost" onClick={() => setActiveId(null)}>
-            ＋ 新会话
-          </button>
+      <header className="topbar">
+        <span className="user-chip" title={userEmail}>
+          {userEmail}
+        </span>
+      </header>
+
+      <nav className="rail" ref={railRef}>
+        <div className="rail-logo">EK</div>
+        <div className="rail-divider" />
+        <button
+          className="rail-btn"
+          onClick={() => {
+            setActiveId(null)
+            setHistoryOpen(false)
+          }}
+        >
+          <span className="rail-icon">＋</span>
+          新会话
+        </button>
+        <button
+          className={`rail-btn ${historyOpen ? 'active' : ''}`}
+          onClick={() => setHistoryOpen((v) => !v)}
+        >
+          <span className="rail-icon">🕘</span>
+          历史
+        </button>
+      </nav>
+
+      {historyOpen && (
+        <div className="history-panel" ref={historyRef}>
+          <div className="history-title">历史会话</div>
+          <div className="session-list">
+            {sessions.length === 0 && <div className="muted">暂无会话</div>}
+            {sessions.map((s) => (
+              <button
+                key={s.id}
+                className={`session-item ${s.id === activeId ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveId(s.id)
+                  setHistoryOpen(false)
+                }}
+              >
+                <div className="session-title">{s.title ?? '未命名会话'}</div>
+                <div className="session-meta">配额 {s.quotaSpent}</div>
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="session-list">
-          {sessions.map((s) => (
-            <button
-              key={s.id}
-              className={`session-item ${s.id === activeId ? 'active' : ''}`}
-              onClick={() => setActiveId(s.id)}
-            >
-              <div className="session-title">{s.title ?? '未命名会话'}</div>
-              <div className="session-meta">配额 {s.quotaSpent}</div>
-            </button>
-          ))}
-        </div>
-        <div className="sidebar-footer">
-          <span className="muted" title={userEmail}>
-            {userEmail}
-          </span>
-        </div>
-      </aside>
+      )}
+
       <Chat
-        key={activeId ?? 'new'}
         sessionId={activeId}
         onSessionCreated={(id) => {
           setActiveId(id)
