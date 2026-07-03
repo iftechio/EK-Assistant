@@ -52,7 +52,7 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
       </header>
 
       <nav className="rail" ref={railRef}>
-        <div className="rail-logo">EK</div>
+        <img className="rail-logo" src="/ek-icon.png" alt="EasyKOL" />
         <div className="rail-divider" />
         <button
           className="rail-btn"

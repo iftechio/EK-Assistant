@@ -118,13 +118,8 @@ textarea {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--brand);
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  object-fit: cover;
 }
 .rail-divider {
   width: 40px;
