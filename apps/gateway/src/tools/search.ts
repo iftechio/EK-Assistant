@@ -16,7 +16,7 @@ interface PollStatus {
   message: string
 }
 
-const TERMINAL = new Set(['COMPLETED', 'FAILED'])
+const TERMINAL = new Set(['COMPLETED', 'RESULT_READY', 'FAILED'])
 
 /** 轮询 backend 统一任务状态接口 GET /api/similars/:taskId */
 export async function pollTask(backend: BackendClient, task: TaskDetail): Promise<PollStatus> {
