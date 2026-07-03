@@ -40,6 +40,7 @@ export interface ChatMessage {
   activities: ToolActivity[]
   confirmations: Confirmation[]
   error?: string
+  processedSeconds?: number
 }
 
 export interface SessionSummary {

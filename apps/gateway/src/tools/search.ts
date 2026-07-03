@@ -31,10 +31,10 @@ export async function pollTask(backend: BackendClient, task: TaskDetail): Promis
 export const searchKols = defineTool({
   name: 'search_kols',
   description:
-    '智能搜索 KOL 达人。用自然语言描述想找的达人（kolDescription），可选关键词、地区、粉丝量等筛选。支持 TIKTOK/YOUTUBE/INSTAGRAM。消耗用户配额（TikTok/YouTube 每批约10分，Instagram 每批约20分）。翻页时传 nextPage=true 和上次的 projectId。',
+    '智能搜索 KOL 达人。用自然语言描述想找的达人（kolDescription），可选关键词、地区、粉丝量等筛选。一次只搜索一个平台，平台参数名必须是 platform（不是 platforms），取值为 TIKTOK/YOUTUBE/INSTAGRAM；多平台需求请拆成多次调用。消耗用户配额（TikTok/YouTube 每批约10分，Instagram 每批约20分）。翻页时传 nextPage=true 和上次的 projectId。',
   permission: 'quota',
   inputSchema: z.object({
-    platform: z.enum(DISCOVERY_PLATFORMS).describe('平台'),
+    platform: z.enum(DISCOVERY_PLATFORMS).describe('单个平台；参数名必须是 platform，不存在 platforms 字段'),
     kolDescription: z.string().min(1).describe('想找的达人的自然语言描述，如"美妆护肤类、擅长测评的博主"'),
     keywords: z.array(z.string().max(100)).max(20).optional().describe('检索关键词（OR 关系）'),
     regions: z.array(z.string()).optional().describe('地区（ISO 两位国家码，如 US、JP）'),

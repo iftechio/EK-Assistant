@@ -3,7 +3,51 @@ import ToolCard from './ToolCard'
 import ConfirmCard from './ConfirmCard'
 import MarkdownText from './MarkdownText'
 
-export default function MessageView({ message }: { message: ChatMessage }) {
+export default function MessageView({
+  message,
+  active = false,
+  elapsedSeconds = 0,
+}: {
+  message: ChatMessage
+  active?: boolean
+  elapsedSeconds?: number
+}) {
+  if (message.role === 'assistant') {
+    return (
+      <section className={`assistant-turn ${active ? 'active' : ''}`}>
+        <div className="assistant-turn-status">
+          <span>{active ? '处理中' : '已处理'}</span>
+          {(active || message.processedSeconds) && (
+            <span>{active ? elapsedSeconds : message.processedSeconds}s</span>
+          )}
+        </div>
+        <div className="assistant-turn-rule" />
+
+        {message.text && (
+          <div className={`assistant-prose ${active ? 'streaming' : ''}`}>
+            <MarkdownText text={message.text} />
+          </div>
+        )}
+
+        {message.activities.map((a, i) => (
+          <div key={i} className={`activity-row ${a.status}`}>
+            <span className="activity-icon">{a.status === 'running' ? '⌁' : '✓'}</span>
+            <span>
+              {a.status === 'running' ? '正在执行' : '已完成'} {toolLabel(a.toolName)}
+              {a.estimatedQuota ? ` · 预估消耗 ${a.estimatedQuota} 配额` : ''}
+            </span>
+            {a.display && <ToolCard display={a.display} />}
+          </div>
+        ))}
+
+        {message.confirmations.map((c, i) => (
+          <ConfirmCard key={i} confirmation={c} />
+        ))}
+        {message.error && <div className="error-text">⚠️ {message.error}</div>}
+      </section>
+    )
+  }
+
   return (
     <div className={`message ${message.role}`}>
       <div className="avatar">{message.role === 'user' ? '我' : 'EK'}</div>

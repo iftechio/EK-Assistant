@@ -5,30 +5,30 @@ import MessageView from './MessageView'
 
 const STARTER_CARDS = [
   {
-    className: 'hero-card big yellow',
+    className: 'hero-card primary',
     title: '搜索达人',
-    desc: '自然语言描述，精准匹配',
+    desc: '按平台、地区、粉丝量和内容风格筛选候选人',
     emoji: '🎯',
     prompt: '帮我在 TikTok 上找 10 个美妆类达人，粉丝量 1w-50w',
   },
   {
-    className: 'hero-card blue',
+    className: 'hero-card',
     title: '相似达人',
-    desc: '给一个账号，挖同类',
+    desc: '给一个账号，继续扩展同类达人池',
     emoji: '👥',
     prompt: '帮我找和这个达人相似的账号：',
   },
   {
-    className: 'hero-card purple',
+    className: 'hero-card',
     title: '邮件外联',
-    desc: '批量触达谈合作',
+    desc: '基于名单批量生成合作邀约',
     emoji: '📮',
     prompt: '帮我给收藏的达人发合作邀约邮件',
   },
   {
-    className: 'hero-card white',
+    className: 'hero-card',
     title: '不知道从哪开始？',
-    desc: '让 AI 一步步引导你',
+    desc: '从目标、预算和市场开始拆解任务',
     emoji: '❓',
     prompt: '我是第一次做 KOL 投放，请一步步引导我',
   },
@@ -44,9 +44,11 @@ export default function Chat({
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [cost, setCost] = useState<{ spent: number; cap: number } | null>(null)
   const currentSession = useRef<string | null>(sessionId)
   const justCreatedSession = useRef<string | null>(null)
+  const turnStartedAt = useRef<number | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -96,6 +98,14 @@ export default function Chat({
     bottomRef.current?.scrollIntoView({ behavior: busy ? 'auto' : 'smooth' })
   }, [busy, messages])
 
+  useEffect(() => {
+    if (!busy || !turnStartedAt.current) return
+    const tick = () => setElapsedSeconds(Math.floor((Date.now() - turnStartedAt.current!) / 1000))
+    tick()
+    const timer = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timer)
+  }, [busy])
+
   const pickStarter = (prompt: string) => {
     setInput(prompt)
     inputRef.current?.focus()
@@ -106,6 +116,8 @@ export default function Chat({
     if (!message || busy) return
     setInput('')
     setBusy(true)
+    setElapsedSeconds(0)
+    turnStartedAt.current = Date.now()
     setMessages((prev) => [
       ...prev,
       { role: 'user', text: message, activities: [], confirmations: [] },
@@ -174,6 +186,11 @@ export default function Chat({
     } catch (err) {
       updateLast((m) => ({ ...m, error: err instanceof Error ? err.message : String(err) }))
     } finally {
+      const processedSeconds = turnStartedAt.current
+        ? Math.max(1, Math.floor((Date.now() - turnStartedAt.current) / 1000))
+        : undefined
+      updateLast((m) => ({ ...m, processedSeconds }))
+      turnStartedAt.current = null
       setBusy(false)
     }
   }
@@ -183,25 +200,29 @@ export default function Chat({
       <div className="message-list">
         {messages.length === 0 && (
           <div className="hero">
-            <h1 className="hero-title">开启你的达人营销 🚀</h1>
-            <p className="hero-greeting">
-              👋 嗨！我是你的 KOL 营销助手，找达人、发外联、盯数据都可以交给我。
-              <br />
-              从下面选一个服务开始，或直接在下方描述你的需求！
-            </p>
+            <div className="hero-kicker">EasyKOL Assistant</div>
+            <h1 className="hero-title">今天要推进哪一步？</h1>
+            <p className="hero-greeting">选择一个常用任务，或直接描述你的达人搜索、外联和投放分析需求。</p>
             <div className="hero-cards">
               {STARTER_CARDS.map((c) => (
                 <button key={c.title} className={c.className} onClick={() => pickStarter(c.prompt)}>
-                  <div className="hero-card-title">{c.title}</div>
-                  <div className="hero-card-desc">{c.desc}</div>
                   <div className="hero-card-emoji">{c.emoji}</div>
+                  <div>
+                    <div className="hero-card-title">{c.title}</div>
+                    <div className="hero-card-desc">{c.desc}</div>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
         )}
         {messages.map((m, i) => (
-          <MessageView key={i} message={m} />
+          <MessageView
+            key={i}
+            message={m}
+            active={busy && i === messages.length - 1 && m.role === 'assistant'}
+            elapsedSeconds={elapsedSeconds}
+          />
         ))}
         <div ref={bottomRef} />
       </div>
