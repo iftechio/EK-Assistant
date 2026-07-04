@@ -9,6 +9,9 @@ interface ChatBody {
   message: string
 }
 
+/** 正在进行 agent turn 的会话：同会话并发对话会交错写历史、突破配额上限，直接拒绝第二个请求 */
+const activeSessions = new Set<string>()
+
 export function registerChatRoutes(app: FastifyInstance, store: SessionStore) {
   app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     let user
@@ -30,6 +33,11 @@ export function registerChatRoutes(app: FastifyInstance, store: SessionStore) {
       return reply.status(404).send({ error: '会话不存在' })
     }
 
+    if (activeSessions.has(session.id)) {
+      return reply.status(409).send({ error: '该会话正在处理上一条消息，请等它完成后再发送' })
+    }
+    activeSessions.add(session.id)
+
     const sse = openSse(request, reply)
     sse.emit({ type: 'session', sessionId: session.id })
     // 客户端断开（关页面/断网）时中止 agent，停止继续烧模型 token 和用户配额
@@ -50,6 +58,7 @@ export function registerChatRoutes(app: FastifyInstance, store: SessionStore) {
         message: err instanceof Error ? err.message : String(err),
       })
     } finally {
+      activeSessions.delete(session.id)
       sse.close()
     }
   })

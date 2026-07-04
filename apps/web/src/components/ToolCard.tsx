@@ -1,10 +1,34 @@
-import { useState } from 'react'
+import { Component, useState, type ReactNode } from 'react'
 import { downloadCommentsExcel } from '../api'
 import { safeHref } from '../safeHref'
 import type { ToolDisplay } from '../types'
 
+/**
+ * 卡片渲染兜底：任何一张卡片因脏数据抛错都不能拖垮整个对话界面
+ * （脏数据已持久化时，历史会话每次进入都会复现，没有兜底就是永久白屏）。
+ */
+class CardErrorBoundary extends Component<{ data: unknown; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    if (this.state.failed) return <JsonCard data={this.props.data} />
+    return this.props.children
+  }
+}
+
 /** 工具结果卡片：完整数据在这里渲染（模型上下文里只有截断版） */
 export default function ToolCard({ display }: { display: ToolDisplay }) {
+  if (!display?.data) return null
+  return (
+    <CardErrorBoundary data={display.data}>
+      <ToolCardInner display={display} />
+    </CardErrorBoundary>
+  )
+}
+
+function ToolCardInner({ display }: { display: ToolDisplay }) {
   switch (display.kind) {
     case 'kol-list':
       return <KolListCard data={display.data} />
