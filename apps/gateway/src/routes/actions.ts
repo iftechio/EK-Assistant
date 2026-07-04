@@ -23,13 +23,19 @@ export function registerActionRoutes(app: FastifyInstance, store: SessionStore) 
         return reply.status(401).send({ error: e instanceof AuthError ? e.message : '鉴权失败' })
       }
 
-      const action = await store.getPendingAction(request.params.id, user.userId)
-      if (!action) return reply.status(404).send({ error: '确认项不存在' })
-      if (action.status !== 'pending') {
-        return reply.status(409).send({ error: `确认项已处理（${action.status}）` })
+      const approved = Boolean(request.body?.approved)
+      const action = await store.claimPendingAction(
+        request.params.id,
+        user.userId,
+        approved ? 'approved' : 'rejected',
+      )
+      if (!action) {
+        const existing = await store.getPendingAction(request.params.id, user.userId)
+        if (!existing) return reply.status(404).send({ error: '确认项不存在' })
+        return reply.status(409).send({ error: `确认项已处理（${existing.status}）` })
       }
 
-      if (!request.body?.approved) {
+      if (!approved) {
         await store.resolvePendingAction(action.id, 'rejected')
         await store.appendMessage(action.session_id, {
           role: 'assistant',
@@ -39,10 +45,16 @@ export function registerActionRoutes(app: FastifyInstance, store: SessionStore) 
       }
 
       const tool = getToolByName(action.tool_name)
-      if (!tool) return reply.status(500).send({ error: `未知工具 ${action.tool_name}` })
+      if (!tool) {
+        await store.resolvePendingAction(action.id, 'failed', { error: `未知工具 ${action.tool_name}` })
+        return reply.status(500).send({ error: `未知工具 ${action.tool_name}` })
+      }
 
       const session = await store.getSession(action.session_id, user.userId)
-      if (!session) return reply.status(404).send({ error: '会话不存在' })
+      if (!session) {
+        await store.resolvePendingAction(action.id, 'failed', { error: '会话不存在' })
+        return reply.status(404).send({ error: '会话不存在' })
+      }
 
       const displays: ToolDisplay[] = []
       const costMeter = new CostMeter(store, session.id, session.quota_spent)
@@ -63,6 +75,8 @@ export function registerActionRoutes(app: FastifyInstance, store: SessionStore) 
             summary,
             detail,
           }),
+        saveMemory: (key, value) => store.setMemory(user.userId, key, value),
+        deleteMemory: (key) => store.deleteMemory(user.userId, key),
       }
 
       try {

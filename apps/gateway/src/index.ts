@@ -9,6 +9,14 @@ import { registerExportRoutes } from './routes/export.js'
 
 async function main() {
   const app = Fastify({ logger: true })
+
+  if (!config.supabaseJwtSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('缺少 SUPABASE_JWT_SECRET：生产环境禁止在 JWT 不验签的状态下运行')
+    }
+    app.log.warn('未配置 SUPABASE_JWT_SECRET，JWT 仅解码不验签——仅限本地开发使用')
+  }
+
   await app.register(cors, { origin: true, credentials: true })
 
   const store = new SessionStore()

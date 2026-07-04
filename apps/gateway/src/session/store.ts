@@ -234,10 +234,36 @@ export class SessionStore {
     }
   }
 
+  /** 会话内所有未决（pending）的高风险操作，用于刷新页面后重建确认卡片 */
+  async listPendingActions(sessionId: string, userId: string): Promise<PendingActionRow[]> {
+    const { rows } = await this.pool.query<PendingActionRow>(
+      `SELECT * FROM assistant_pending_actions
+       WHERE session_id = $1 AND user_id = $2 AND status = 'pending'
+       ORDER BY created_at ASC`,
+      [sessionId, userId],
+    )
+    return rows
+  }
+
   async getPendingAction(id: string, userId: string): Promise<PendingActionRow | null> {
     const { rows } = await this.pool.query<PendingActionRow>(
       `SELECT * FROM assistant_pending_actions WHERE id = $1 AND user_id = $2`,
       [id, userId],
+    )
+    return rows[0] ?? null
+  }
+
+  /** 原子抢占 pending 状态：并发确认（双击/多标签页）时只有一个请求能更新成功，其余返回 null */
+  async claimPendingAction(
+    id: string,
+    userId: string,
+    status: 'approved' | 'rejected',
+  ): Promise<PendingActionRow | null> {
+    const { rows } = await this.pool.query<PendingActionRow>(
+      `UPDATE assistant_pending_actions SET status = $3
+       WHERE id = $1 AND user_id = $2 AND status = 'pending'
+       RETURNING *`,
+      [id, userId, status],
     )
     return rows[0] ?? null
   }
@@ -296,5 +322,9 @@ export class SessionStore {
        ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
       [userId, key, JSON.stringify(value)],
     )
+  }
+
+  async deleteMemory(userId: string, key: string): Promise<void> {
+    await this.pool.query(`DELETE FROM assistant_memory WHERE user_id = $1 AND key = $2`, [userId, key])
   }
 }

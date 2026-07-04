@@ -63,48 +63,65 @@ export default function Chat({
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [cost, setCost] = useState<{ spent: number; cap: number } | null>(null)
+  const [cost, setCost] = useState<{ spent: number; cap: number; accountRemaining?: number } | null>(null)
   const [showJump, setShowJump] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const currentSession = useRef<string | null>(sessionId)
   const justCreatedSession = useRef<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const turnStartedAt = useRef<number | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     currentSession.current = sessionId
+    if (justCreatedSession.current === sessionId) {
+      // 流式中新建的会话：流本身属于该会话，不中止
+      justCreatedSession.current = null
+      return
+    }
+
+    // 切换会话（含新建空会话）时中止在途的旧流，避免旧会话的事件写入当前会话
+    abortRef.current?.abort()
+
     if (!sessionId) {
       setMessages([])
       setCost(null)
       return
     }
 
-    if (justCreatedSession.current === sessionId) {
-      justCreatedSession.current = null
-      return
-    }
-
     let cancelled = false
     getSessionMessages(sessionId)
-      .then(({ session, messages }) => {
+      .then(({ session, messages, pendingActions }) => {
         if (cancelled) return
         setCost({ spent: session.quotaSpent, cap: 0 })
-        setMessages(
-          messages
-            .filter((m) => m.role === 'user' || m.role === 'assistant')
-            .map((m) => ({
-              role: m.role as 'user' | 'assistant',
-              text: contentToText(m.content),
-              activities: (m.display ?? []).map((d) => ({
-                toolName: d.kind,
-                status: 'done' as const,
-                display: d,
-              })),
-              confirmations: [],
-            }))
-            .filter((m) => m.text || m.activities.length),
-        )
+        const restored: ChatMessage[] = messages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({
+            role: m.role as 'user' | 'assistant',
+            text: contentToText(m.content),
+            activities: (m.display ?? []).map((d) => ({
+              toolName: d.kind,
+              status: 'done' as const,
+              display: d,
+            })),
+            confirmations: [],
+          }))
+          .filter((m) => m.text || m.activities.length)
+        // 重建未决的高风险操作确认卡片（挂在最后一条 assistant 消息上）
+        if (pendingActions?.length) {
+          const confirmations = pendingActions.map((action) => ({
+            action,
+            status: 'pending' as const,
+          }))
+          const last = restored[restored.length - 1]
+          if (last?.role === 'assistant') {
+            last.confirmations = confirmations
+          } else {
+            restored.push({ role: 'assistant', text: '', activities: [], confirmations })
+          }
+        }
+        setMessages(restored)
       })
       .catch(() => {
         if (!cancelled) setMessages([])
@@ -113,6 +130,8 @@ export default function Chat({
       cancelled = true
     }
   }, [sessionId])
+
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: busy ? 'auto' : 'smooth' })
@@ -144,14 +163,22 @@ export default function Chat({
       { role: 'assistant', text: '', activities: [], confirmations: [] },
     ])
 
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     const updateLast = (fn: (m: ChatMessage) => ChatMessage) =>
       setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        if (!last) return prev
         const next = [...prev]
-        next[next.length - 1] = fn(next[next.length - 1])
+        next[next.length - 1] = fn(last)
         return next
       })
 
     const onEvent = (event: AgentEvent) => {
+      // 流已被中止（切换了会话）：丢弃残余事件，避免写入其它会话
+      if (controller.signal.aborted) return
       switch (event.type) {
         case 'session':
           if (!currentSession.current) {
@@ -191,7 +218,7 @@ export default function Chat({
           }))
           break
         case 'cost':
-          setCost({ spent: event.spent, cap: event.cap })
+          setCost({ spent: event.spent, cap: event.cap, accountRemaining: event.accountRemaining })
           break
         case 'error':
           updateLast((m) => ({ ...m, error: event.message }))
@@ -202,14 +229,18 @@ export default function Chat({
     }
 
     try {
-      await streamChat(message, currentSession.current, onEvent)
+      await streamChat(message, currentSession.current, onEvent, controller.signal)
     } catch (err) {
-      updateLast((m) => ({ ...m, error: err instanceof Error ? err.message : String(err) }))
+      if (!controller.signal.aborted) {
+        updateLast((m) => ({ ...m, error: err instanceof Error ? err.message : String(err) }))
+      }
     } finally {
-      const processedSeconds = turnStartedAt.current
-        ? Math.max(1, Math.floor((Date.now() - turnStartedAt.current) / 1000))
-        : undefined
-      updateLast((m) => ({ ...m, processedSeconds }))
+      if (!controller.signal.aborted) {
+        const processedSeconds = turnStartedAt.current
+          ? Math.max(1, Math.floor((Date.now() - turnStartedAt.current) / 1000))
+          : undefined
+        updateLast((m) => ({ ...m, processedSeconds }))
+      }
       turnStartedAt.current = null
       setBusy(false)
     }
@@ -298,6 +329,7 @@ export default function Chat({
               {cost && cost.cap > 0 && (
                 <span className="quota-hint">
                   本会话配额消耗 {cost.spent} / {cost.cap}
+                  {cost.accountRemaining != null && ` · 账户剩余 ${cost.accountRemaining}`}
                 </span>
               )}
               {busy && <span className="busy-hint">思考中...</span>}

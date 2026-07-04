@@ -9,8 +9,8 @@ export interface AuthUser {
 
 /**
  * 校验 Supabase JWT（与 backend src/middlewares/auth.ts 同款：HS256 对称密钥本地验签）。
- * 未配置 SUPABASE_JWT_SECRET 时仅解码不验签（本地开发兜底）——backend 收到转发的
- * token 后仍会完整验签，伪造 token 拿不到任何业务数据。
+ * 未配置 SUPABASE_JWT_SECRET 时仅解码不验签（仅限本地开发；Gateway 自己的会话/记忆数据
+ * 不经过 backend 验签，生产环境缺失该配置会在启动时直接报错，见 index.ts）。
  */
 export async function authenticate(authorizationHeader: string | undefined): Promise<AuthUser> {
   if (!authorizationHeader) throw new AuthError('缺少 Authorization header')
