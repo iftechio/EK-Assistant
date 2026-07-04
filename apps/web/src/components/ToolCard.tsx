@@ -79,6 +79,73 @@ function ToolCardInner({ display }: { display: ToolDisplay }) {
   }
 }
 
+/** 通用统计格：stat-grid + 若干 stat-item，7 处同构统计卡片共用 */
+function StatGrid({ items }: { items: { key?: string | number; value: ReactNode; label: ReactNode }[] }) {
+  return (
+    <div className="stat-grid">
+      {items.map((item, i) => (
+        <div key={item.key ?? i} className="stat-item">
+          <div className="stat-value">{item.value}</div>
+          <div className="stat-label">{item.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** 通用数据表：table-scroll(+compact-table) + thead/tbody，6 张同构表格卡共用 */
+function DataTable<T>({
+  columns,
+  rows,
+  limit,
+  rowKey,
+  footer,
+  compact = true,
+}: {
+  columns: { header: string; cell: (row: T, i: number) => ReactNode }[]
+  rows: T[]
+  limit?: number
+  rowKey?: (row: T, i: number) => React.Key
+  footer?: ReactNode
+  compact?: boolean
+}) {
+  const shown = limit ? rows.slice(0, limit) : rows
+  return (
+    <div className={compact ? 'table-scroll compact-table' : 'table-scroll'}>
+      <table>
+        <thead>
+          <tr>
+            {columns.map((c, i) => (
+              <th key={i}>{c.header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((row, i) => (
+            <tr key={rowKey ? rowKey(row, i) : i}>
+              {columns.map((c, ci) => (
+                <td key={ci}>{c.cell(row, i)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {footer}
+    </div>
+  )
+}
+
+/** 通用下载链接：safeHref 校验通过才渲染，否则展示 fallback */
+function DownloadLink({ url, label, fallback }: { url?: string; label: string; fallback?: ReactNode }) {
+  const href = safeHref(url)
+  if (!href) return <>{fallback ?? null}</>
+  return (
+    <a className="download-link" href={href} target="_blank" rel="noreferrer">
+      ⬇ {label}
+    </a>
+  )
+}
+
 function KolListCard({ data }: { data: any }) {
   const kols: any[] = data.kols ?? []
   const [expanded, setExpanded] = useState(false)
@@ -115,31 +182,18 @@ function KolListCard({ data }: { data: any }) {
       )}
 
       {expanded && (
-        <div className="table-scroll compact-table">
-          <table>
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>账号</th>
-                <th>粉丝</th>
-                <th>地区</th>
-                <th>邮箱</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kols.slice(0, 100).map((k, i) => (
-                <tr key={i}>
-                  <td>{getName(k)}</td>
-                  <td>{getAccount(k)}</td>
-                  <td>{fmt(getFollowers(k))}</td>
-                  <td>{getRegion(k)}</td>
-                  <td>{getEmail(k) || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {kols.length > 100 && <div className="muted">表格仅预览前 100 条，下载 CSV 查看全部。</div>}
-        </div>
+        <DataTable
+          columns={[
+            { header: '名称', cell: (k: any) => getName(k) },
+            { header: '账号', cell: (k: any) => getAccount(k) },
+            { header: '粉丝', cell: (k: any) => fmt(getFollowers(k)) },
+            { header: '地区', cell: (k: any) => getRegion(k) },
+            { header: '邮箱', cell: (k: any) => getEmail(k) || '-' },
+          ]}
+          rows={kols}
+          limit={100}
+          footer={kols.length > 100 && <div className="muted">表格仅预览前 100 条，下载 CSV 查看全部。</div>}
+        />
       )}
     </div>
   )
@@ -221,52 +275,34 @@ function CommentsCard({ data }: { data: any }) {
 }
 
 function StatCard({ title, data }: { title: string; data: any }) {
+  const items = Object.entries(data ?? {})
+    .filter(([, v]) => typeof v === 'number' || typeof v === 'string')
+    .map(([k, v]) => ({ key: k, value: String(v), label: k }))
   return (
     <div className="card">
       <div className="card-title">{title}</div>
-      <div className="stat-grid">
-        {Object.entries(data ?? {})
-          .filter(([, v]) => typeof v === 'number' || typeof v === 'string')
-          .map(([k, v]) => (
-            <div key={k} className="stat-item">
-              <div className="stat-value">{String(v)}</div>
-              <div className="stat-label">{k}</div>
-            </div>
-          ))}
-      </div>
+      <StatGrid items={items} />
     </div>
   )
 }
 
 function ComparisonCard({ data }: { data: any }) {
-  const comparison = data.comparison ?? {}
+  const rows = Object.entries(data.comparison ?? {}) as [string, any][]
   return (
     <div className="card">
       <div className="card-title">表现对比（基线 {data.baselineCount} 条）</div>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>指标</th>
-              <th>本条</th>
-              <th>基线中位数</th>
-              <th>倍数</th>
-              <th>百分位</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(comparison).map(([metric, c]: [string, any]) => (
-              <tr key={metric}>
-                <td>{metric}</td>
-                <td>{fmt(c.target)}</td>
-                <td>{fmt(c.baseline?.median)}</td>
-                <td>{c.vsMedian ?? '-'}</td>
-                <td>{c.percentile != null ? `P${c.percentile}` : '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        compact={false}
+        columns={[
+          { header: '指标', cell: ([metric]) => metric },
+          { header: '本条', cell: ([, c]) => fmt(c.target) },
+          { header: '基线中位数', cell: ([, c]) => fmt(c.baseline?.median) },
+          { header: '倍数', cell: ([, c]) => c.vsMedian ?? '-' },
+          { header: '百分位', cell: ([, c]) => (c.percentile != null ? `P${c.percentile}` : '-') },
+        ]}
+        rows={rows}
+        rowKey={([metric]) => metric}
+      />
     </div>
   )
 }
@@ -286,20 +322,13 @@ function CommentAnalysisCard({ data }: { data: any }) {
     <div className="card">
       <div className="card-title">评论反馈分析（{data.analyzedComments} 条）</div>
       {sentiment && (
-        <div className="stat-grid">
-          <div className="stat-item">
-            <div className="stat-value">{sentiment.positivePct}%</div>
-            <div className="stat-label">正面</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-value">{sentiment.negativePct}%</div>
-            <div className="stat-label">负面</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-value">{sentiment.neutralPct}%</div>
-            <div className="stat-label">中性</div>
-          </div>
-        </div>
+        <StatGrid
+          items={[
+            { key: 'positive', value: `${sentiment.positivePct}%`, label: '正面' },
+            { key: 'negative', value: `${sentiment.negativePct}%`, label: '负面' },
+            { key: 'neutral', value: `${sentiment.neutralPct}%`, label: '中性' },
+          ]}
+        />
       )}
       {data.summary && <p className="analysis-summary">{data.summary}</p>}
       <FeedbackSection title="👍 正面反馈" items={data.positives} />
@@ -388,16 +417,12 @@ function SendResultCard({ data }: { data: any }) {
   return (
     <div className="card">
       <div className="card-title">✅ 邮件已加入发送队列</div>
-      <div className="stat-grid">
-        <div className="stat-item">
-          <div className="stat-value">{data.inserted ?? '-'}</div>
-          <div className="stat-label">已入队</div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-value">{data.receivers ?? '-'}</div>
-          <div className="stat-label">收件人</div>
-        </div>
-      </div>
+      <StatGrid
+        items={[
+          { key: 'inserted', value: data.inserted ?? '-', label: '已入队' },
+          { key: 'receivers', value: data.receivers ?? '-', label: '收件人' },
+        ]}
+      />
       <div className="muted">按设定间隔逐封发送，进度可随时询问「邮件发送状态」。</div>
     </div>
   )
@@ -420,44 +445,25 @@ function OutreachRecordsCard({ data }: { data: any }) {
     <div className="card">
       <div className="card-title">邮件发送明细（共 {total} 条）</div>
       {stats && (
-        <div className="stat-grid">
-          {Object.entries(stats)
+        <StatGrid
+          items={Object.entries(stats)
             .filter(([, v]) => typeof v === 'number' || typeof v === 'string')
-            .map(([k, v]) => (
-              <div key={k} className="stat-item">
-                <div className="stat-value">{String(v)}</div>
-                <div className="stat-label">{k}</div>
-              </div>
-            ))}
-        </div>
+            .map(([k, v]) => ({ key: k, value: String(v), label: k }))}
+        />
       )}
-      <div className="table-scroll compact-table">
-        <table>
-          <thead>
-            <tr>
-              <th>收件人</th>
-              <th>主题</th>
-              <th>状态</th>
-              <th>发送时间</th>
-              <th>已读</th>
-              <th>跟进</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.slice(0, 100).map((r, i) => (
-              <tr key={i}>
-                <td>{r.to ?? '-'}</td>
-                <td>{r.subject ?? '-'}</td>
-                <td>{EMAIL_STATUS_LABELS[r.status] ?? r.status ?? '-'}</td>
-                <td>{fmtDate(r.sentAt)}</td>
-                <td>{r.isRead ? `是${r.readCount ? ` (${r.readCount})` : ''}` : '否'}</td>
-                <td>{r.followups?.length ?? 0}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {list.length > 100 && <div className="muted">仅展示前 100 条。</div>}
-      </div>
+      <DataTable
+        columns={[
+          { header: '收件人', cell: (r: any) => r.to ?? '-' },
+          { header: '主题', cell: (r: any) => r.subject ?? '-' },
+          { header: '状态', cell: (r: any) => EMAIL_STATUS_LABELS[r.status] ?? r.status ?? '-' },
+          { header: '发送时间', cell: (r: any) => fmtDate(r.sentAt) },
+          { header: '已读', cell: (r: any) => (r.isRead ? `是${r.readCount ? ` (${r.readCount})` : ''}` : '否') },
+          { header: '跟进', cell: (r: any) => r.followups?.length ?? 0 },
+        ]}
+        rows={list}
+        limit={100}
+        footer={list.length > 100 && <div className="muted">仅展示前 100 条。</div>}
+      />
     </div>
   )
 }
@@ -468,33 +474,19 @@ function OutreachQueueCard({ data }: { data: any }) {
   return (
     <div className="card">
       <div className="card-title">自动邮件队列（共 {total} 条）</div>
-      <div className="table-scroll compact-table">
-        <table>
-          <thead>
-            <tr>
-              <th>收件人</th>
-              <th>发件邮箱</th>
-              <th>状态</th>
-              <th>模板</th>
-              <th>计划发送时间</th>
-              <th>计划 ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.slice(0, 100).map((p, i) => (
-              <tr key={i}>
-                <td>{p.nickname ? `${p.nickname}（${p.email}）` : p.email ?? '-'}</td>
-                <td>{p.from ?? '-'}</td>
-                <td>{EMAIL_STATUS_LABELS[p.status] ?? p.status ?? '-'}</td>
-                <td>{p.template?.templateName ?? p.template?.templateId ?? '-'}</td>
-                <td>{fmtDate(p.scheduledAt)}</td>
-                <td className="muted">{p.id}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {list.length > 100 && <div className="muted">仅展示前 100 条。</div>}
-      </div>
+      <DataTable
+        columns={[
+          { header: '收件人', cell: (p: any) => (p.nickname ? `${p.nickname}（${p.email}）` : p.email ?? '-') },
+          { header: '发件邮箱', cell: (p: any) => p.from ?? '-' },
+          { header: '状态', cell: (p: any) => EMAIL_STATUS_LABELS[p.status] ?? p.status ?? '-' },
+          { header: '模板', cell: (p: any) => p.template?.templateName ?? p.template?.templateId ?? '-' },
+          { header: '计划发送时间', cell: (p: any) => fmtDate(p.scheduledAt) },
+          { header: '计划 ID', cell: (p: any) => <span className="muted">{p.id}</span> },
+        ]}
+        rows={list}
+        limit={100}
+        footer={list.length > 100 && <div className="muted">仅展示前 100 条。</div>}
+      />
     </div>
   )
 }
@@ -504,47 +496,31 @@ function TrackingListCard({ data }: { data: any }) {
   return (
     <div className="card">
       <div className="card-title">投放数据明细（共 {data.total ?? rows.length} 条）</div>
-      <div className="table-scroll compact-table">
-        <table>
-          <thead>
-            <tr>
-              <th>博主</th>
-              <th>平台</th>
-              <th>发布日期</th>
-              <th>播放</th>
-              <th>点赞</th>
-              <th>评论</th>
-              <th>分享</th>
-              <th>互动率</th>
-              <th>CPM</th>
-              <th>链接</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, 100).map((p, i) => (
-              <tr key={i}>
-                <td>{p.nickName ?? p.influencer ?? '-'}</td>
-                <td>{p.platform ?? '-'}</td>
-                <td>{fmtDate(p.publishDate)}</td>
-                <td>{fmt(p.views)}</td>
-                <td>{fmt(p.likes)}</td>
-                <td>{fmt(p.comments)}</td>
-                <td>{fmt(p.shares)}</td>
-                <td>{p.engagementRate != null ? `${p.engagementRate}%` : '-'}</td>
-                <td>{p.cpm ?? '-'}</td>
-                <td>
-                  {safeHref(p.postLink) ? (
-                    <a href={safeHref(p.postLink)} target="_blank" rel="noreferrer">查看</a>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rows.length > 100 && <div className="muted">仅展示前 100 条。</div>}
-      </div>
+      <DataTable
+        columns={[
+          { header: '博主', cell: (p: any) => p.nickName ?? p.influencer ?? '-' },
+          { header: '平台', cell: (p: any) => p.platform ?? '-' },
+          { header: '发布日期', cell: (p: any) => fmtDate(p.publishDate) },
+          { header: '播放', cell: (p: any) => fmt(p.views) },
+          { header: '点赞', cell: (p: any) => fmt(p.likes) },
+          { header: '评论', cell: (p: any) => fmt(p.comments) },
+          { header: '分享', cell: (p: any) => fmt(p.shares) },
+          { header: '互动率', cell: (p: any) => (p.engagementRate != null ? `${p.engagementRate}%` : '-') },
+          { header: 'CPM', cell: (p: any) => p.cpm ?? '-' },
+          {
+            header: '链接',
+            cell: (p: any) =>
+              safeHref(p.postLink) ? (
+                <a href={safeHref(p.postLink)} target="_blank" rel="noreferrer">查看</a>
+              ) : (
+                '-'
+              ),
+          },
+        ]}
+        rows={rows}
+        limit={100}
+        footer={rows.length > 100 && <div className="muted">仅展示前 100 条。</div>}
+      />
     </div>
   )
 }
@@ -595,28 +571,16 @@ function TaskListCard({ data }: { data: any }) {
   return (
     <div className="card">
       <div className="card-title">后台任务（{tasks.length}）</div>
-      <div className="table-scroll compact-table">
-        <table>
-          <thead>
-            <tr>
-              <th>类型</th>
-              <th>状态</th>
-              <th>创建时间</th>
-              <th>任务 ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.slice(0, 50).map((t, i) => (
-              <tr key={i}>
-                <td>{t.type ?? '-'}</td>
-                <td>{TASK_STATUS_LABELS[t.status] ?? t.status ?? '-'}</td>
-                <td>{fmtDate(t.createdAt)}</td>
-                <td className="muted">{t.id}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={[
+          { header: '类型', cell: (t: any) => t.type ?? '-' },
+          { header: '状态', cell: (t: any) => TASK_STATUS_LABELS[t.status] ?? t.status ?? '-' },
+          { header: '创建时间', cell: (t: any) => fmtDate(t.createdAt) },
+          { header: '任务 ID', cell: (t: any) => <span className="muted">{t.id}</span> },
+        ]}
+        rows={tasks}
+        limit={50}
+      />
     </div>
   )
 }
@@ -631,18 +595,12 @@ function CollectResultCard({ data }: { data: any }) {
       <div className="card-title">
         {failed.length ? `${verb}完成（部分失败）` : `✅ ${verb}完成`}
       </div>
-      <div className="stat-grid">
-        <div className="stat-item">
-          <div className="stat-value">{ok.length}</div>
-          <div className="stat-label">成功</div>
-        </div>
-        {failed.length > 0 && (
-          <div className="stat-item">
-            <div className="stat-value">{failed.length}</div>
-            <div className="stat-label">失败</div>
-          </div>
-        )}
-      </div>
+      <StatGrid
+        items={[
+          { key: 'ok', value: ok.length, label: '成功' },
+          ...(failed.length > 0 ? [{ key: 'failed', value: failed.length, label: '失败' }] : []),
+        ]}
+      />
       <div className="muted">项目 {data.projectId} · 态度 {data.attitude}</div>
       {failed.length > 0 && (
         <ul className="analysis-list">
@@ -701,13 +659,11 @@ function ExportResultCard({ data }: { data: any }) {
   return (
     <div className="card">
       <div className="card-title">✅ {data.title ?? '导出完成'}</div>
-      {safeHref(data.url) ? (
-        <a className="download-link" href={safeHref(data.url)} target="_blank" rel="noreferrer">
-          ⬇ 下载 {data.fileName ?? 'Excel 文件'}
-        </a>
-      ) : (
-        <div className="muted">没有可下载的文件</div>
-      )}
+      <DownloadLink
+        url={data.url}
+        label={`下载 ${data.fileName ?? 'Excel 文件'}`}
+        fallback={<div className="muted">没有可下载的文件</div>}
+      />
     </div>
   )
 }
@@ -718,43 +674,24 @@ function KolEmailsCard({ data }: { data: any }) {
     <div className="card">
       <div className="card-title">
         邮箱提取结果
-        {safeHref(data.downloadUrl) && (
-          <a className="download-link" href={safeHref(data.downloadUrl)} target="_blank" rel="noreferrer">
-            ⬇ 下载 Excel
-          </a>
-        )}
+        <DownloadLink url={data.downloadUrl} label="下载 Excel" />
       </div>
-      <div className="stat-grid">
-        <div className="stat-item">
-          <div className="stat-value">{data.totalCount ?? '-'}</div>
-          <div className="stat-label">查询达人</div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-value">{data.emailCount ?? '-'}</div>
-          <div className="stat-label">发现邮箱</div>
-        </div>
-      </div>
-      <div className="table-scroll compact-table">
-        <table>
-          <thead>
-            <tr>
-              <th>达人</th>
-              <th>邮箱</th>
-              <th>平台</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receivers.slice(0, 100).map((r, i) => (
-              <tr key={i}>
-                <td>{r.nickname ?? '-'}</td>
-                <td>{r.email}</td>
-                <td>{r.platform ?? '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {receivers.length > 100 && <div className="muted">仅展示前 100 条，下载 Excel 查看全部。</div>}
-      </div>
+      <StatGrid
+        items={[
+          { key: 'total', value: data.totalCount ?? '-', label: '查询达人' },
+          { key: 'email', value: data.emailCount ?? '-', label: '发现邮箱' },
+        ]}
+      />
+      <DataTable
+        columns={[
+          { header: '达人', cell: (r: any) => r.nickname ?? '-' },
+          { header: '邮箱', cell: (r: any) => r.email },
+          { header: '平台', cell: (r: any) => r.platform ?? '-' },
+        ]}
+        rows={receivers}
+        limit={100}
+        footer={receivers.length > 100 && <div className="muted">仅展示前 100 条，下载 Excel 查看全部。</div>}
+      />
       {data.unknownUrls?.length > 0 && (
         <div className="muted">跳过 {data.unknownUrls.length} 条无法识别的链接。</div>
       )}
@@ -767,35 +704,20 @@ function CompetitorPostsCard({ data }: { data: any }) {
   return (
     <div className="card">
       <div className="card-title">竞品命中内容（共 {data.total ?? rows.length} 条）</div>
-      <div className="table-scroll compact-table">
-        <table>
-          <thead>
-            <tr>
-              <th>标题</th>
-              <th>账号</th>
-              <th>平台</th>
-              <th>播放</th>
-              <th>点赞</th>
-              <th>评论</th>
-              <th>命中标签</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, 100).map((c, i) => (
-              <tr key={i}>
-                <td>{c.title ?? '-'}</td>
-                <td>{c.uniqueId ?? c.platformAccount ?? '-'}</td>
-                <td>{c.platform ?? '-'}</td>
-                <td>{fmt(c.viewCount)}</td>
-                <td>{fmt(c.likeCount)}</td>
-                <td>{fmt(c.commentCount)}</td>
-                <td>{(c.hitTags ?? []).join('、') || '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rows.length > 100 && <div className="muted">仅展示前 100 条。</div>}
-      </div>
+      <DataTable
+        columns={[
+          { header: '标题', cell: (c: any) => c.title ?? '-' },
+          { header: '账号', cell: (c: any) => c.uniqueId ?? c.platformAccount ?? '-' },
+          { header: '平台', cell: (c: any) => c.platform ?? '-' },
+          { header: '播放', cell: (c: any) => fmt(c.viewCount) },
+          { header: '点赞', cell: (c: any) => fmt(c.likeCount) },
+          { header: '评论', cell: (c: any) => fmt(c.commentCount) },
+          { header: '命中标签', cell: (c: any) => (c.hitTags ?? []).join('、') || '-' },
+        ]}
+        rows={rows}
+        limit={100}
+        footer={rows.length > 100 && <div className="muted">仅展示前 100 条。</div>}
+      />
     </div>
   )
 }
@@ -806,11 +728,7 @@ function AudienceAnalysisCard({ data }: { data: any }) {
     <div className="card">
       <div className="card-title">
         受众画像（{data.source} · {data.platform}）
-        {safeHref(data.exportUrl) && (
-          <a className="download-link" href={safeHref(data.exportUrl)} target="_blank" rel="noreferrer">
-            ⬇ 下载 Excel
-          </a>
-        )}
+        <DownloadLink url={data.exportUrl} label="下载 Excel" />
       </div>
       <AudienceSection title="👥 用户画像" obj={data.userPortraitResult} />
       <AudienceSection title="🌍 地区分布" obj={data.regionAnalysisResult} />
@@ -828,14 +746,7 @@ function AudienceSection({ title, obj }: { title: string; obj: any }) {
   return (
     <div className="analysis-section">
       <div className="analysis-section-title">{title}</div>
-      <div className="stat-grid">
-        {flat.slice(0, 12).map(([k, v]) => (
-          <div key={k} className="stat-item">
-            <div className="stat-value">{formatStatValue(v)}</div>
-            <div className="stat-label">{k}</div>
-          </div>
-        ))}
-      </div>
+      <StatGrid items={flat.slice(0, 12).map(([k, v]) => ({ key: k, value: formatStatValue(v), label: k }))} />
     </div>
   )
 }
@@ -878,38 +789,23 @@ function FakeDetectionCard({ data }: { data: any }) {
         假粉检测（{data.mode === 'audience' ? '受众' : '帖子点赞'}）{data.fromCache ? ' · 缓存结果' : ''}
       </div>
       {data.target && <div className="muted">对象：{data.target}</div>}
-      <div className="stat-grid">
-        {Object.entries(breakdown).map(([k, v]) => (
-          <div key={k} className="stat-item">
-            <div className="stat-value">{Math.round((v / total) * 100)}%</div>
-            <div className="stat-label">
-              {FAKE_RESULT_LABELS[k] ?? k}（{v}）
-            </div>
-          </div>
-        ))}
-      </div>
+      <StatGrid
+        items={Object.entries(breakdown).map(([k, v]) => ({
+          key: k,
+          value: `${Math.round((v / total) * 100)}%`,
+          label: `${FAKE_RESULT_LABELS[k] ?? k}（${v}）`,
+        }))}
+      />
       <details>
         <summary>抽样明细（{accounts.length}）</summary>
-        <div className="table-scroll compact-table">
-          <table>
-            <thead>
-              <tr>
-                <th>账号</th>
-                <th>判定</th>
-                <th>理由</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((a, i) => (
-                <tr key={i}>
-                  <td>{a.username}</td>
-                  <td>{FAKE_RESULT_LABELS[a.result] ?? a.result}</td>
-                  <td>{a.reason ?? '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={[
+            { header: '账号', cell: (a: any) => a.username },
+            { header: '判定', cell: (a: any) => FAKE_RESULT_LABELS[a.result] ?? a.result },
+            { header: '理由', cell: (a: any) => a.reason ?? '-' },
+          ]}
+          rows={accounts}
+        />
       </details>
     </div>
   )
@@ -921,14 +817,13 @@ function OpResultCard({ data }: { data: any }) {
     <div className="card">
       <div className="card-title">{data.title ?? '操作完成'}</div>
       {data.items?.length > 0 && (
-        <div className="stat-grid">
-          {data.items.map((item: { label: string; value: unknown }, i: number) => (
-            <div key={i} className="stat-item">
-              <div className="stat-value">{String(item.value ?? '-')}</div>
-              <div className="stat-label">{item.label}</div>
-            </div>
-          ))}
-        </div>
+        <StatGrid
+          items={data.items.map((item: { label: string; value: unknown }, i: number) => ({
+            key: i,
+            value: String(item.value ?? '-'),
+            label: item.label,
+          }))}
+        />
       )}
       {data.list?.length > 0 && (
         <ul className="analysis-list">
