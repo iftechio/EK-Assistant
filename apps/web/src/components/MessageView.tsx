@@ -73,7 +73,7 @@ function StepsPanel({
         disabled={!hasCards}
       >
         <span className="steps-title">
-          {active ? '处理中' : '已处理'}
+          {active ? '任务进行中' : '任务已完成'}
           {seconds ? ` · ${seconds}s` : ''}
         </span>
         {hasCards && (
@@ -98,9 +98,8 @@ function StepsPanel({
               )}
             </span>
             <span className="step-label">
-              {toolLabel(a.toolName)}
-              {a.status === 'running' ? ' 执行中' : ' 已完成'}
-              {a.estimatedQuota ? ` · 预估消耗 ${a.estimatedQuota} 配额` : ''}
+              {toolStatusText(a.toolName, a.status)}
+              {a.estimatedQuota ? <span className="quota-chip">预估 {a.estimatedQuota}</span> : null}
             </span>
           </div>
           {expanded && a.display && (
@@ -125,55 +124,60 @@ function StepsPanel({
   )
 }
 
-function toolLabel(name: string): string {
+function toolStatusText(name: string, status: 'running' | 'done'): string {
+  const action = toolAction(name)
+  return status === 'running' ? `正在${action}` : `已返回：${action}`
+}
+
+function toolAction(name: string): string {
   const labels: Record<string, string> = {
-    search_kols: '达人搜索',
-    parse_search_intent: '意图解析',
-    'search-intent': '意图解析',
-    find_similar_kols: '相似达人',
-    discover_kols_by_source: '细分发现',
-    save_kols_to_project: '收藏达人',
-    manage_email_template: '邮件模板',
-    send_outreach_batch: '邮件发送',
-    get_outreach_status: '邮件状态',
-    manage_outreach_queue: '队列管理',
-    track_publications: '数据追踪',
-    get_tracking_results: '追踪结果',
-    manage_tracking: '追踪管理',
-    list_my_tasks: '任务状态',
-    export_comments: '评论导出',
-    analyze_comments_feedback: '评论分析',
-    compare_campaign_performance: '效果对比',
-    remember_preference: '记住偏好',
-    send_single_email: '单封发送',
-    export_kols: '名单导出',
-    manage_exclude_list: '排除名单',
-    extract_kol_emails: '邮箱提取',
-    detect_fake_followers: '假粉检测',
-    track_competitors: '竞品追踪',
-    analyze_audience: '受众分析',
+    search_kols: '搜索达人',
+    parse_search_intent: '解析搜索条件',
+    'search-intent': '解析搜索条件',
+    find_similar_kols: '寻找相似达人',
+    discover_kols_by_source: '按来源发现达人',
+    save_kols_to_project: '保存达人',
+    manage_email_template: '处理邮件模板',
+    send_outreach_batch: '准备批量外联',
+    get_outreach_status: '查询邮件状态',
+    manage_outreach_queue: '管理发送队列',
+    track_publications: '创建追踪任务',
+    get_tracking_results: '读取追踪结果',
+    manage_tracking: '管理追踪任务',
+    list_my_tasks: '查询后台任务',
+    export_comments: '拉取评论',
+    analyze_comments_feedback: '分析评论反馈',
+    compare_campaign_performance: '对比投放表现',
+    remember_preference: '保存偏好',
+    send_single_email: '准备单封邮件',
+    export_kols: '导出达人名单',
+    manage_exclude_list: '处理排除名单',
+    extract_kol_emails: '提取达人邮箱',
+    detect_fake_followers: '检测假粉',
+    track_competitors: '追踪竞品',
+    analyze_audience: '分析受众画像',
     // 历史会话恢复时 activities 里存的是 display kind
-    'export-result': '导出结果',
-    'competitor-posts': '竞品内容',
-    'audience-analysis': '受众画像',
-    'kol-emails': '邮箱提取',
-    'fake-detection': '假粉检测',
-    'kol-list': '达人结果',
-    comments: '评论列表',
-    'comment-analysis': '评论分析',
-    'outreach-stat': '邮件统计',
-    'outreach-records': '发送明细',
-    'outreach-queue': '邮件队列',
-    'tracking-summary': '投放汇总',
-    'tracking-list': '投放明细',
-    'track-created': '追踪任务',
-    'task-list': '任务状态',
-    'collect-result': '收藏结果',
-    'send-result': '发送结果',
-    'email-templates': '邮件模板',
-    'email-template': '邮件模板',
-    'performance-comparison': '效果对比',
-    'op-result': '操作结果',
+    'export-result': '生成下载结果',
+    'competitor-posts': '读取竞品内容',
+    'audience-analysis': '生成受众画像',
+    'kol-emails': '生成邮箱结果',
+    'fake-detection': '生成假粉检测结果',
+    'kol-list': '生成达人结果',
+    comments: '生成评论列表',
+    'comment-analysis': '生成评论分析',
+    'outreach-stat': '生成邮件统计',
+    'outreach-records': '生成发送明细',
+    'outreach-queue': '生成邮件队列',
+    'tracking-summary': '生成投放汇总',
+    'tracking-list': '生成投放明细',
+    'track-created': '生成追踪任务',
+    'task-list': '生成任务状态',
+    'collect-result': '生成保存结果',
+    'send-result': '生成发送结果',
+    'email-templates': '读取邮件模板',
+    'email-template': '读取邮件模板',
+    'performance-comparison': '生成效果对比',
+    'op-result': '完成操作',
   }
   return labels[name] ?? name
 }

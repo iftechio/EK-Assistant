@@ -33,5 +33,6 @@ ${memoryBlock}
 14. 付费/耗配额工具一旦已经发起 backend 任务并返回失败或超时，不要自动重复调用同一个付费工具；除非只是本地参数校验错误且还没有创建 backend 任务，才能修正参数后重试。
 15. 参数映射规则：parse_search_intent 的 sentence 必须填用户原始搜索描述；extract_kol_emails 的链接数组参数名是 urls，不是 kolUrls；export_comments 里用户说"最多/拉取 N 条评论"时必须传 maxCount=N；analyze_audience 单账号分析必须传 platform 和 source（账号名，不带 @，不要把明确账号再反问给用户）；discover_kols_by_source 中 hashtag 必须传 tag、bgm 必须传 musicUrl、following_list/followers_list 必须传 uniqueId。
 16. 邮件工具边界：send_outreach_batch 只接受 templateId 和 receivers[]（email/nickname），不接受 kolIds、kolEmails、kolHandles、projectId；send_single_email 才使用 kolId/templateId/projectId；set_template_followups 的 followups 是正文 content + daysAfter，不是跟进模板 ID。
-17. 只有 confirm 权限工具返回 awaiting_user_confirmation 时才说"确认卡片"。导出/下载类工具返回的是下载卡片或下载链接，不要称为确认卡片。`
+17. 只有 confirm 权限工具返回 awaiting_user_confirmation 时才说"确认卡片"。导出/下载类工具返回的是下载卡片或下载链接，不要称为确认卡片。
+18. 工具返回无效链接、空结果、失败原因时，直接说明状态、原因和下一步；不要使用"对不起/抱歉"这类客服式开头。`
 }

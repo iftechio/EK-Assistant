@@ -6,7 +6,7 @@ import MessageView from './MessageView'
 const STARTER_CARDS = [
   {
     title: '搜索达人',
-    desc: '按平台、地区、粉丝量和内容风格筛选候选人',
+    desc: '按平台、地区、粉丝量和内容风格筛选候选人。',
     icon: (
       <>
         <circle cx="11" cy="11" r="7" />
@@ -17,7 +17,7 @@ const STARTER_CARDS = [
   },
   {
     title: '相似达人',
-    desc: '给一个账号，继续扩展同类达人池',
+    desc: '输入种子账号，继续扩展同类达人池。',
     icon: (
       <>
         <circle cx="9" cy="8" r="3.5" />
@@ -30,7 +30,7 @@ const STARTER_CARDS = [
   },
   {
     title: '邮件外联',
-    desc: '基于名单批量生成合作邀约',
+    desc: '基于名单、模板和发送节奏生成外联计划。',
     icon: (
       <>
         <rect x="3" y="5" width="18" height="14" rx="2.5" />
@@ -41,7 +41,7 @@ const STARTER_CARDS = [
   },
   {
     title: '不知道从哪开始？',
-    desc: '从目标、预算和市场开始拆解任务',
+    desc: '从目标、市场和执行步骤开始拆解任务。',
     icon: (
       <>
         <circle cx="12" cy="12" r="9" />
@@ -51,6 +51,8 @@ const STARTER_CARDS = [
     prompt: '我是第一次做 KOL 投放，请一步步引导我',
   },
 ]
+
+const WORKFLOW_ITEMS = ['搜索', '筛选', '收藏', '外联', '追踪']
 
 export default function Chat({
   sessionId,
@@ -292,27 +294,39 @@ export default function Chat({
       >
         {messages.length === 0 && (
           <div className="hero">
-            <div className="hero-kicker">EasyKOL Assistant</div>
-            <h1 className="hero-title">今天要推进哪一步？</h1>
-            <p className="hero-greeting">选择一个常用任务，或直接描述你的达人搜索、外联和投放分析需求。</p>
+            <div className="hero-main">
+              <div className="hero-copy">
+                <div className="hero-kicker">EasyKOL Assistant</div>
+                <h1 className="hero-title">达人营销工作台</h1>
+                <p className="hero-greeting">把搜索、收藏、邮件外联和投放追踪串成一条工作流。</p>
+              </div>
+              <div className="hero-flow" aria-label="工作流">
+                {WORKFLOW_ITEMS.map((item, i) => (
+                  <div key={item} className="flow-step">
+                    <span className="flow-index">{i + 1}</span>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="hero-cards">
               {STARTER_CARDS.map((c) => (
                 <button key={c.title} className="hero-card" onClick={() => pickStarter(c.prompt)}>
-                  <div className="hero-card-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      {c.icon}
-                    </svg>
+                  <div className="hero-card-top">
+                    <div className="hero-card-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        {c.icon}
+                      </svg>
+                    </div>
+                    <span className="hero-card-arrow">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14" />
+                        <path d="m13 6 6 6-6 6" />
+                      </svg>
+                    </span>
                   </div>
-                  <div className="hero-card-text">
-                    <div className="hero-card-title">{c.title}</div>
-                    <div className="hero-card-desc">{c.desc}</div>
-                  </div>
-                  <span className="hero-card-arrow">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14" />
-                      <path d="m13 6 6 6-6 6" />
-                    </svg>
-                  </span>
+                  <div className="hero-card-title">{c.title}</div>
+                  <div className="hero-card-desc">{c.desc}</div>
                 </button>
               ))}
             </div>
@@ -360,9 +374,11 @@ export default function Chat({
             <div className="composer-meta">
               <span className="composer-hint">Enter 发送，Shift+Enter 换行</span>
               {cost && (cost.cap > 0 || cost.spent > 0) && (
-                <span className="quota-hint">
-                  本会话配额消耗 {cost.spent}
-                  {cost.accountRemaining != null && ` · 账户剩余 ${cost.accountRemaining}`}
+                <span className="quota-group" aria-label="配额信息">
+                  <span className="quota-pill">本会话已用 {cost.spent}</span>
+                  {cost.accountRemaining != null && (
+                    <span className="quota-pill">账户剩余 {cost.accountRemaining}</span>
+                  )}
                 </span>
               )}
               {busy && <span className="busy-hint">思考中...</span>}
