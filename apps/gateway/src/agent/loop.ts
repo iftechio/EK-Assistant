@@ -99,6 +99,11 @@ export async function runAgentTurn(args: {
 
   const pool = getModelPool()
   let lastError: unknown
+  // 增量落库游标：onStepFinish 的 response.messages 是累积数组，每步只落新增部分。
+  // 这样流中途出错时，已执行的 tool-call/tool-result 也在历史里，下轮模型
+  // 不会因为看不到已做过的搜索而重做一次、重扣一次配额。
+  let persistedCount = 0
+  let lastPersistedId: string | null = null
   for (const pooled of pool) {
     let textEmitted = false
     try {
@@ -109,6 +114,13 @@ export async function runAgentTurn(args: {
         tools,
         stopWhen: stepCountIs(config.maxSteps),
         abortSignal: args.abortSignal,
+        onStepFinish: async (step) => {
+          const fresh = step.response.messages.slice(persistedCount)
+          persistedCount = step.response.messages.length
+          for (const msg of fresh) {
+            lastPersistedId = await store.appendMessage(session.id, msg)
+          }
+        },
       })
 
       for await (const part of result.fullStream) {
@@ -121,11 +133,13 @@ export async function runAgentTurn(args: {
       }
 
       const response = await result.response
-      // 持久化本轮产生的 assistant/tool 消息（用户消息已在开头落库）
-      for (let i = 0; i < response.messages.length; i++) {
-        const msg = response.messages[i]
-        const isLast = i === response.messages.length - 1
-        await store.appendMessage(session.id, msg, isLast && displays.length ? displays : undefined)
+      // 各 step 的消息已增量落库；这里兜底收尾可能未经 onStepFinish 的尾部消息
+      for (const msg of response.messages.slice(persistedCount)) {
+        lastPersistedId = await store.appendMessage(session.id, msg)
+      }
+      persistedCount = response.messages.length
+      if (displays.length && lastPersistedId) {
+        await store.updateMessageDisplay(lastPersistedId, displays)
       }
 
       emit({ type: 'done', sessionId: session.id })
@@ -139,8 +153,9 @@ export async function runAgentTurn(args: {
       // 客户端已断开导致的中止：直接结束，不 failover 也不报错
       if (args.abortSignal?.aborted) return
       lastError = err
-      // 已开始输出文本（重复内容）或已执行过工具（重复扣配额/重复副作用）时禁止 failover 重放
-      if (textEmitted || toolStarted) break
+      // 已开始输出文本（重复内容）、已执行过工具（重复扣配额/重复副作用）或
+      // 已有消息落库（重放会产生重复历史）时禁止 failover 重放
+      if (textEmitted || toolStarted || persistedCount > 0) break
     }
   }
 

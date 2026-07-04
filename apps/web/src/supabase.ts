@@ -7,6 +7,11 @@ const SUPABASE_ANON_KEY =
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF2em5saWlhd2F5cndqcXF4emN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTY0NzM4OTYsImV4cCI6MjAzMjA0OTg5Nn0.rHiIBFzk00peS4LKjv85UTevB5EKcNUyXOQJPgH9-0c'
 
+if (!import.meta.env.VITE_SUPABASE_URL) {
+  // 换 Supabase 项目时若忘配 env，静默回退到内置默认值会连到错误的项目，这里显式提醒
+  console.warn('[supabase] 未配置 VITE_SUPABASE_URL，使用内置默认项目（仅限本地开发）')
+}
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     autoRefreshToken: true,

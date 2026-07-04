@@ -247,6 +247,23 @@ export default function Chat({
     } catch (err) {
       if (!controller.signal.aborted) {
         updateLast((m) => ({ ...m, error: err instanceof Error ? err.message : String(err) }))
+        // 断流后服务端可能已生成确认卡片但事件丢失（send_outreach_batch 等会永远等不到批准），
+        // 拉一次会话快照把漏掉的待确认操作补挂上
+        const sid = currentSession.current
+        if (sid) {
+          getSessionMessages(sid)
+            .then(({ pendingActions }) => {
+              if (currentSession.current !== sid || !pendingActions?.length) return
+              updateLast((m) => {
+                const known = new Set(m.confirmations.map((c) => c.action.id))
+                const missed = pendingActions
+                  .filter((a) => !known.has(a.id))
+                  .map((action) => ({ action, status: 'pending' as const }))
+                return missed.length ? { ...m, confirmations: [...m.confirmations, ...missed] } : m
+              })
+            })
+            .catch(() => {})
+        }
       }
     } finally {
       if (!controller.signal.aborted) {

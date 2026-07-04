@@ -16,7 +16,9 @@ interface PollStatus {
   message: string
 }
 
-const TERMINAL = new Set(['COMPLETED', 'RESULT_READY', 'FAILED'])
+// RESULT_READY 不是终态：backend /api/similars/:id 把它与 PENDING/PROCESSING 同样
+// 视为"仍在处理"（视觉筛选等流程此时结果不完整），必须等到 COMPLETED/FAILED
+const TERMINAL = new Set(['COMPLETED', 'FAILED'])
 
 /** 轮询 backend 统一任务状态接口 GET /api/similars/:taskId */
 export async function pollTask(backend: BackendClient, task: TaskDetail): Promise<PollStatus> {

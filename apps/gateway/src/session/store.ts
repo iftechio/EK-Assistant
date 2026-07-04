@@ -181,6 +181,14 @@ export class SessionStore {
     return id
   }
 
+  /** 把工具结果卡片补挂到已落库的消息上（增量落库时最后一条消息先入库、display 后确定） */
+  async updateMessageDisplay(id: string, display: ToolDisplay[]): Promise<void> {
+    await this.pool.query(`UPDATE assistant_messages SET display = $2 WHERE id = $1`, [
+      id,
+      JSON.stringify(display),
+    ])
+  }
+
   async listMessages(sessionId: string, includeCompacted = false): Promise<MessageRow[]> {
     const { rows } = await this.pool.query<MessageRow>(
       `SELECT * FROM assistant_messages WHERE session_id = $1
