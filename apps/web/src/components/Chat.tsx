@@ -348,7 +348,7 @@ export default function Chat({
           <textarea
             ref={inputRef}
             value={input}
-            placeholder="描述你的需求，Enter 发送，Shift+Enter 换行"
+            placeholder="描述你的需求"
             onChange={(e) => {
               setInput(e.target.value)
               autosize()
