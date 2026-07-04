@@ -56,7 +56,7 @@ describe('executeWithGate', () => {
     )
   })
 
-  it('quota 级工具超上限时转为需确认', async () => {
+  it('quota 级工具超上限时转为需确认，且补发 tool-result 结束前端卡片', async () => {
     const execute = vi.fn()
     const tool = defineTool({
       ...baseTool,
@@ -78,6 +78,32 @@ describe('executeWithGate', () => {
     const result = (await executeWithGate(tool, {}, ctx, store)) as any
     expect(execute).not.toHaveBeenCalled()
     expect(result.status).toBe('awaiting_user_confirmation')
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'tool-result', toolName: 'search' }),
+    )
+  })
+
+  it('quota 级工具账户余额不足时拦下，且补发 tool-result 结束前端卡片', async () => {
+    const execute = vi.fn()
+    const tool = defineTool({
+      ...baseTool,
+      name: 'search',
+      permission: 'quota',
+      estimateQuota: () => 50,
+      execute,
+    })
+    const store = makeStore()
+    const ctx = makeCtx({
+      backend: { get: vi.fn(async () => ({ remainingQuota: 10 })) } as any,
+    })
+
+    const result = (await executeWithGate(tool, {}, ctx, store)) as any
+    expect(execute).not.toHaveBeenCalled()
+    expect(result.status).toBe('insufficient_quota')
+    expect(result.accountRemainingQuota).toBe(10)
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'tool-result', toolName: 'search' }),
+    )
   })
 
   it('quota 级工具未超限时执行并计入消耗', async () => {

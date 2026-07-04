@@ -28,8 +28,9 @@ const PLATFORM_KEY: Record<(typeof TRACK_PLATFORMS)[number], string> = {
 export const trackPublications = defineTool({
   name: 'track_publications',
   description:
-    '把合作视频/帖子链接加入投放数据追踪（播放/点赞/评论/互动率等指标会持续更新）。数据抓取在后台进行，稍后用 get_tracking_results 查看。注意：backend 会按链接数量扣配额。',
-  permission: 'write_logged',
+    '把合作视频/帖子链接加入投放数据追踪（播放/点赞/评论/互动率等指标会持续更新）。数据抓取在后台进行，稍后用 get_tracking_results 查看。按链接数量扣配额（1 配额/条）。',
+  permission: 'quota',
+  estimateQuota: (input) => input.urls.length,
   inputSchema: z.object({
     platform: z.enum(TRACK_PLATFORMS),
     urls: z.array(z.string().url()).min(1).max(50).describe('要追踪的视频/帖子链接'),
@@ -45,6 +46,10 @@ export const trackPublications = defineTool({
       '/api/publicationStatistics/task/track-new',
       body,
     )
+    await ctx.logActivity(`追踪 ${input.platform} 的 ${input.urls.length} 条发布数据`, {
+      toolName: 'track_publications',
+      input,
+    })
     return {
       forModel: {
         taskId: task.id,
@@ -107,6 +112,70 @@ export const getTrackingResults = defineTool({
         note: rows.length > 20 ? '仅展示前20条，完整列表见界面卡片' : undefined,
       },
       display: { kind: 'tracking-list', data: result },
+    }
+  },
+})
+
+export const manageTracking = defineTool({
+  name: 'manage_tracking',
+  description:
+    '管理已有的投放追踪数据：update_batch=按发布 ID 批量刷新数据（按条数扣配额，1 配额/条）；delete_batch=批量删除投放数据（免费）。发布 ID 从 get_tracking_results view=list 的结果里取。自动执行并记入活动日志。',
+  permission: 'quota',
+  estimateQuota: (input) => (input.action === 'update_batch' ? input.publicationIds.length : 0),
+  inputSchema: z.object({
+    action: z.enum(['update_batch', 'delete_batch']),
+    publicationIds: z.array(z.string()).min(1).max(100).describe('发布数据 ID 列表'),
+  }),
+  summarize: (input) =>
+    input.action === 'update_batch'
+      ? `刷新 ${input.publicationIds.length} 条投放数据`
+      : `删除 ${input.publicationIds.length} 条投放数据`,
+  execute: async (input, ctx) => {
+    const logDone = () =>
+      ctx.logActivity(
+        input.action === 'update_batch'
+          ? `刷新 ${input.publicationIds.length} 条投放数据`
+          : `删除 ${input.publicationIds.length} 条投放数据`,
+        { toolName: 'manage_tracking', input },
+      )
+    if (input.action === 'update_batch') {
+      const task = await ctx.backend.post<{ id?: string; taskId?: string }>(
+        '/api/publicationStatistics/task/update-batch',
+        { publicationIds: input.publicationIds },
+      )
+      await logDone()
+      const taskId = task?.id ?? task?.taskId
+      return {
+        forModel: {
+          taskId,
+          updating: input.publicationIds.length,
+          note: '数据刷新任务已创建，在后台执行（通常几分钟内），之后用 get_tracking_results 查看最新数据',
+        },
+        display: {
+          kind: 'op-result',
+          data: {
+            title: '✅ 数据刷新任务已创建',
+            items: [
+              { label: '刷新条数', value: input.publicationIds.length },
+              ...(taskId ? [{ label: '任务 ID', value: taskId }] : []),
+            ],
+          },
+        },
+      }
+    }
+    await ctx.backend.post('/api/publicationStatistics/delete-batch', {
+      publicationIds: input.publicationIds,
+    })
+    await logDone()
+    return {
+      forModel: { deleted: input.publicationIds.length },
+      display: {
+        kind: 'op-result',
+        data: {
+          title: '✅ 投放数据已删除',
+          items: [{ label: '删除条数', value: input.publicationIds.length }],
+        },
+      },
     }
   },
 })

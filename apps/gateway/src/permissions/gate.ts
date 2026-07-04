@@ -43,15 +43,36 @@ export async function executeWithGate(
     case 'quota': {
       const estimate = tool.estimateQuota ? tool.estimateQuota(input) : 0
       ctx.emit({ type: 'tool-start', toolName: tool.name, input, estimatedQuota: estimate })
+      // 账户真实余额预检：不足时直接拦下（backend 也会拒绝），避免让用户白确认
+      const accountRemaining = await fetchAccountRemainingQuota(ctx)
+      if (accountRemaining !== null && estimate > accountRemaining) {
+        // 与 tool-start 配对，否则前端卡片永远停在"正在执行"
+        ctx.emit({ type: 'tool-result', toolName: tool.name })
+        return {
+          status: 'insufficient_quota',
+          accountRemainingQuota: accountRemaining,
+          estimatedQuota: estimate,
+          instruction:
+            '用户账户剩余配额不足以执行本次操作。告知用户当前余额与预估消耗，建议缩小规模（如减少数量/批次）或前往充值，不要原样重试。',
+        }
+      }
       if (ctx.costMeter.wouldExceed(estimate)) {
+        ctx.emit({ type: 'tool-result', toolName: tool.name })
         return requireConfirmation(
-          `本次操作预估消耗 ${estimate} 配额，会话累计将超过上限 ${ctx.costMeter.cap}（已用 ${ctx.costMeter.spentSoFar}）`,
+          `本次操作预估消耗 ${estimate} 配额，会话累计将超过上限 ${ctx.costMeter.cap}（已用 ${ctx.costMeter.spentSoFar}${
+            accountRemaining !== null ? `，账户剩余 ${accountRemaining}` : ''
+          }）`,
           estimate,
         )
       }
       const result = await runTool(tool, input, ctx, { skipStartEvent: true })
       const spent = await ctx.costMeter.add(estimate)
-      ctx.emit({ type: 'cost', spent, cap: ctx.costMeter.cap })
+      ctx.emit({
+        type: 'cost',
+        spent,
+        cap: ctx.costMeter.cap,
+        accountRemaining: accountRemaining !== null ? Math.max(0, accountRemaining - estimate) : undefined,
+      })
       return result
     }
 
@@ -75,6 +96,19 @@ export async function executeApprovedAction(
   const result = await runTool(tool, input, ctx)
   await ctx.logActivity(`[用户已确认] ${tool.summarize(input)}`, { toolName: tool.name, input })
   return result
+}
+
+/**
+ * 查询用户账户真实剩余配额（GET /api/quota/user-info）。
+ * 查询失败（如企业账户无个人 membership）时返回 null，不阻塞工具执行。
+ */
+async function fetchAccountRemainingQuota(ctx: ToolContext): Promise<number | null> {
+  try {
+    const info = await ctx.backend.get<{ remainingQuota?: number }>('/api/quota/user-info')
+    return typeof info?.remainingQuota === 'number' ? info.remainingQuota : null
+  } catch {
+    return null
+  }
 }
 
 async function runTool(

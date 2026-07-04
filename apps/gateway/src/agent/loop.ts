@@ -25,7 +25,11 @@ export async function runAgentTurn(args: {
   const { store, session, user, userMessage } = args
 
   const displays: ToolDisplay[] = []
+  // 本轮是否已发起过工具调用：一旦有（配额可能已扣、pending action 可能已落库），
+  // failover 重放整轮 messages 会重复执行工具，必须熔断
+  let toolStarted = false
   const emit = (event: AgentEvent) => {
+    if (event.type === 'tool-start') toolStarted = true
     if (event.type === 'tool-result' && event.display) displays.push(event.display)
     args.emit(event)
   }
@@ -54,6 +58,8 @@ export async function runAgentTurn(args: {
         summary,
         detail,
       }),
+    saveMemory: (key, value) => store.setMemory(user.userId, key, value),
+    deleteMemory: (key) => store.deleteMemory(user.userId, key),
   }
 
   const tools = Object.fromEntries(
@@ -126,7 +132,8 @@ export async function runAgentTurn(args: {
       return
     } catch (err) {
       lastError = err
-      if (textEmitted) break // 已开始输出，failover 会导致重复内容，直接报错
+      // 已开始输出文本（重复内容）或已执行过工具（重复扣配额/重复副作用）时禁止 failover 重放
+      if (textEmitted || toolStarted) break
     }
   }
 
