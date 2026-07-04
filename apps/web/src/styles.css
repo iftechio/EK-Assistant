@@ -768,14 +768,39 @@ textarea {
   font-weight: 700;
   flex-shrink: 0;
 }
+img.kol-avatar {
+  object-fit: cover;
+}
 .kol-main {
   min-width: 0;
+  flex: 1;
 }
 .kol-name {
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.kol-name a {
+  color: inherit;
+  text-decoration: none;
+}
+.kol-name a:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+.kol-flag {
+  margin-left: 6px;
+  font-weight: 400;
+}
+.kol-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .kol-account {
   margin-top: 2px;

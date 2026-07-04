@@ -35,6 +35,19 @@ interface VideoCommentsTaskDetail {
 
 const TERMINAL_TASK_STATUS = new Set(['COMPLETED', 'FAILED'])
 
+/** 从视频链接推断平台，避免要求模型必填枚举参数（小模型经常漏传） */
+export function inferPlatform(url: string): (typeof COMMENT_PLATFORMS)[number] | null {
+  let host: string
+  try {
+    host = new URL(url).hostname.toLowerCase()
+  } catch {
+    return null
+  }
+  if (/(^|\.)tiktok\.com$/.test(host)) return 'TIKTOK'
+  if (/(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)) return 'YOUTUBE'
+  return null
+}
+
 /**
  * 会话级评论缓存：analyze_comments_feedback 直接复用 export_comments 拉过的数据，
  * 不重复消耗配额。进程内缓存，1 小时过期。
@@ -68,13 +81,22 @@ export const exportComments = defineTool({
     '拉取某条视频的全部评论（支持 TIKTOK/YOUTUBE），供用户下载 Excel 或后续分析。消耗配额（每 100 条评论 1 个任务点，默认 200 条 = 2 点，任务失败自动退费）。拉取后可直接调用 analyze_comments_feedback 做反馈分析（不重复扣费）。',
   permission: 'quota',
   inputSchema: z.object({
-    platform: z.enum(COMMENT_PLATFORMS),
+    platform: z.enum(COMMENT_PLATFORMS).optional().describe('平台；不传则根据链接自动识别'),
     url: z.string().url().describe('视频链接'),
     maxCount: z.number().int().min(10).max(1000).optional().describe('最多拉取的评论数，默认200'),
   }),
   estimateQuota: (input) => Math.ceil((input.maxCount ?? 200) / 100),
-  summarize: (input) => `拉取 ${input.platform} 视频评论：${truncate(input.url, 60)}`,
+  summarize: (input) =>
+    `拉取 ${input.platform ?? inferPlatform(input.url) ?? ''} 视频评论：${truncate(input.url, 60)}`,
   execute: async (input, ctx) => {
+    const platform = input.platform ?? inferPlatform(input.url)
+    if (!platform) {
+      return {
+        forModel: {
+          error: '无法从链接识别平台，目前仅支持 TikTok / YouTube 视频链接',
+        },
+      }
+    }
     const maxCount = input.maxCount ?? 200
     // backend 为 create→poll 异步任务：创建任务后轮询直到终态
     const task = await ctx.backend.callBackendTask<
@@ -83,7 +105,7 @@ export const exportComments = defineTool({
     >({
       create: (client) =>
         client.post<VideoCommentsTaskCreated>('/api/videoComments/task', {
-          platform: input.platform,
+          platform,
           url: input.url,
           maxCount,
         }),
@@ -100,7 +122,7 @@ export const exportComments = defineTool({
       }
     }
     const result: FetchCommentsResponse = {
-      platform: input.platform,
+      platform,
       url: input.url,
       total: task.result.total,
       comments: task.result.comments,
@@ -118,7 +140,7 @@ export const exportComments = defineTool({
         kind: 'comments',
         data: {
           taskId: task.id,
-          platform: input.platform,
+          platform,
           url: input.url,
           maxCount,
           total: result.total,
