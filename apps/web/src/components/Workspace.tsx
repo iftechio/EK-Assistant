@@ -6,9 +6,12 @@ import Chat from './Chat'
 export default function Workspace({ userEmail }: { userEmail: string }) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [resetToken, setResetToken] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
   const railRef = useRef<HTMLElement>(null)
   const historyRef = useRef<HTMLDivElement>(null)
+  const visibleSessions = sessions.filter((s) => !isNoiseSession(s))
+  const hiddenCount = sessions.length - visibleSessions.length
 
   const refresh = useCallback(async () => {
     try {
@@ -60,6 +63,7 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
           className="rail-btn"
           onClick={() => {
             setActiveId(null)
+            setResetToken((v) => v + 1)
             setHistoryOpen(false)
           }}
         >
@@ -88,10 +92,15 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
 
       {historyOpen && (
         <div className="history-panel" ref={historyRef}>
-          <div className="history-title">历史会话</div>
+          <div className="history-head">
+            <div className="history-title">历史会话</div>
+            <button className="history-close" aria-label="关闭历史" onClick={() => setHistoryOpen(false)}>
+              ×
+            </button>
+          </div>
           <div className="session-list">
-            {sessions.length === 0 && <div className="muted">暂无会话</div>}
-            {sessions.map((s) => (
+            {visibleSessions.length === 0 && <div className="muted">暂无会话</div>}
+            {visibleSessions.map((s) => (
               <button
                 key={s.id}
                 className={`session-item ${s.id === activeId ? 'active' : ''}`}
@@ -104,12 +113,15 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
                 <div className="session-meta">配额 {s.quotaSpent}</div>
               </button>
             ))}
+            {hiddenCount > 0 && <div className="history-muted">已隐藏 {hiddenCount} 个空白测试会话</div>}
           </div>
         </div>
       )}
 
       <Chat
+        key={resetToken}
         sessionId={activeId}
+        resetToken={resetToken}
         onSessionCreated={(id) => {
           setActiveId(id)
           refresh()
@@ -117,4 +129,10 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
       />
     </div>
   )
+}
+
+function isNoiseSession(session: SessionSummary): boolean {
+  const title = (session.title ?? '').trim()
+  if (session.quotaSpent > 0) return false
+  return title.length <= 2
 }

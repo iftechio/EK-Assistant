@@ -54,9 +54,11 @@ const STARTER_CARDS = [
 
 export default function Chat({
   sessionId,
+  resetToken,
   onSessionCreated,
 }: {
   sessionId: string | null
+  resetToken: number
   onSessionCreated: (id: string) => void
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -139,7 +141,7 @@ export default function Chat({
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [sessionId, resetToken])
 
   useEffect(() => () => abortRef.current?.abort(), [])
 

@@ -151,6 +151,21 @@ function KolListCard({ data }: { data: any }) {
   const [expanded, setExpanded] = useState(false)
   const emailCount = kols.filter((k) => getEmail(k)).length
   const preview = kols.slice(0, 12)
+  if (!kols.length) {
+    return (
+      <div className="card kol-card">
+        <div className="kol-card-head">
+          <div>
+            <div className="card-title">KOL 结果</div>
+            <div className="kol-summary">共 {data.total ?? 0} 个，已返回 0 个</div>
+          </div>
+        </div>
+        <div className="kol-empty">
+          没有返回符合条件的达人。可以放宽地区、粉丝量、平均播放量，或先做意图解析后再搜索。
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="card kol-card">
       <div className="kol-card-head">

@@ -234,11 +234,31 @@ textarea {
     transform: translate(0, -50%) scale(1);
   }
 }
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 10px 8px;
+}
 .history-title {
   font-size: 13px;
   font-weight: 600;
-  padding: 4px 8px 10px;
   color: var(--muted);
+}
+.history-close {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--subtle);
+  font-size: 20px;
+  line-height: 1;
+}
+.history-close:hover {
+  background: #f4f6f9;
+  color: var(--text);
 }
 .session-list {
   flex: 1;
@@ -269,6 +289,11 @@ textarea {
 .session-meta {
   font-size: 12px;
   color: var(--subtle);
+}
+.history-muted {
+  padding: 8px 10px 2px;
+  color: var(--subtle);
+  font-size: 12px;
 }
 
 /* ---- 对话区 ---- */
@@ -826,6 +851,14 @@ img.kol-avatar {
 .kol-more {
   margin-top: 12px;
 }
+.kol-empty {
+  border: 1px dashed var(--brand-border);
+  border-radius: 12px;
+  background: #f8faff;
+  color: var(--muted);
+  padding: 14px;
+  line-height: 1.6;
+}
 .compact-table {
   margin-top: 14px;
 }
@@ -1123,8 +1156,9 @@ details summary {
     left: 16px;
     right: 16px;
     top: auto;
-    bottom: 96px;
+    bottom: 220px;
     width: auto;
+    max-height: min(40vh, 360px);
     transform: none;
     animation: none;
   }
