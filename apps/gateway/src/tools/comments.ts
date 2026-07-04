@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { generateText } from 'ai'
+import { generateObject, generateText } from 'ai'
 import { defineTool } from './types.js'
 import { getModelPool } from '../ai/models.js'
 import { truncate } from './helpers.js'
@@ -181,15 +181,51 @@ export const analyzeCommentsFeedback = defineTool({
     }
 
     const model = getModelPool()[0]
-    const { text } = await generateText({
-      model: model.model,
-      system:
-        '你是社媒评论分析师。基于给定的视频评论，输出结构化反馈摘要：1) 正面反馈要点（附代表性原句）2) 负面反馈要点（附代表性原句）3) 高频问题/疑问 4) 总体情感倾向占比估计。只依据给定评论，不要编造。',
-      prompt: `${input.focus ? `分析侧重点：${input.focus}\n\n` : ''}视频（${cached.platform}）：${cached.url}\n共 ${cached.comments.length} 条评论（按点赞数附权重）：\n${lines.join('\n')}`,
-    })
-    return {
-      forModel: { analyzedComments: lines.length, analysis: text },
-      display: { kind: 'comment-analysis', data: { url: cached.url, analyzedComments: lines.length, analysis: text } },
+    if (!model) throw new Error('未配置任何模型 API Key，无法执行评论分析')
+    const system =
+      '你是社媒评论分析师。基于给定的视频评论输出反馈摘要：正面反馈要点（附代表性原句）、负面反馈要点（附代表性原句）、高频问题/疑问、总体情感倾向占比估计。只依据给定评论，不要编造。'
+    const prompt = `${input.focus ? `分析侧重点：${input.focus}\n\n` : ''}视频（${cached.platform}）：${cached.url}\n共 ${cached.comments.length} 条评论（按点赞数附权重）：\n${lines.join('\n')}`
+
+    // 优先结构化输出（前端分区渲染）；模型不支持/解析失败时回退纯文本
+    try {
+      const { object } = await generateObject({
+        model: model.model,
+        schema: FeedbackAnalysisSchema,
+        system,
+        prompt,
+      })
+      return {
+        forModel: {
+          analyzedComments: lines.length,
+          summary: object.summary,
+          sentiment: object.sentiment,
+          positives: object.positives.map((p) => p.point),
+          negatives: object.negatives.map((p) => p.point),
+          questions: object.questions,
+        },
+        display: {
+          kind: 'comment-analysis',
+          data: { url: cached.url, analyzedComments: lines.length, ...object },
+        },
+      }
+    } catch {
+      const { text } = await generateText({ model: model.model, system, prompt })
+      return {
+        forModel: { analyzedComments: lines.length, analysis: text },
+        display: { kind: 'comment-analysis', data: { url: cached.url, analyzedComments: lines.length, analysis: text } },
+      }
     }
   },
+})
+
+const FeedbackAnalysisSchema = z.object({
+  summary: z.string().describe('一句话总体结论'),
+  sentiment: z.object({
+    positivePct: z.number().min(0).max(100),
+    negativePct: z.number().min(0).max(100),
+    neutralPct: z.number().min(0).max(100),
+  }),
+  positives: z.array(z.object({ point: z.string(), quotes: z.array(z.string()).max(3) })).describe('正面反馈要点，quotes 为代表性评论原句'),
+  negatives: z.array(z.object({ point: z.string(), quotes: z.array(z.string()).max(3) })),
+  questions: z.array(z.string()).describe('评论区高频问题/疑问'),
 })

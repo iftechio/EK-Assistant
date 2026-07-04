@@ -65,3 +65,11 @@ export function percentileOf(values: number[], value: number): number | null {
   const below = nums.filter((v) => v <= value).length
   return Math.round((below / nums.length) * 100)
 }
+
+/** 必填参数校验：模型漏传可选参数时给出明确错误，而不是打出畸形请求 */
+export function requireParam<T>(value: T | undefined | null, name: string): T {
+  if (value === undefined || value === null || (typeof value === 'string' && value === '')) {
+    throw new Error(`缺少参数 ${name}`)
+  }
+  return value
+}

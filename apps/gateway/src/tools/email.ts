@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { defineTool } from './types.js'
-import { truncate } from './helpers.js'
+import { truncate, requireParam as must } from './helpers.js'
 
 interface EmailTemplate {
   id: string
@@ -55,7 +55,7 @@ export const manageEmailTemplate = defineTool({
         }
       }
       case 'get': {
-        const t = await ctx.backend.get<EmailTemplate>(`/api/emails/templates/${must(input.templateId, 'templateId')}`)
+        const t = await ctx.backend.get<EmailTemplate>(`/api/emails/templates/${encodeURIComponent(must(input.templateId, 'templateId'))}`)
         return { forModel: { ...t, content: truncate(t.content ?? '', 2000) }, display: { kind: 'email-template', data: t } }
       }
       case 'create': {
@@ -70,7 +70,7 @@ export const manageEmailTemplate = defineTool({
       }
       case 'update': {
         const t = await ctx.backend.patch<EmailTemplate>(
-          `/api/emails/templates/${must(input.templateId, 'templateId')}`,
+          `/api/emails/templates/${encodeURIComponent(must(input.templateId, 'templateId'))}`,
           { name: input.name, subject: input.subject, content: input.content, cc: input.cc },
         )
         return { forModel: compact(t), display: { kind: 'email-template', data: t } }
@@ -78,7 +78,7 @@ export const manageEmailTemplate = defineTool({
       case 'delete': {
         const t = await ctx.backend.request<EmailTemplate>(
           'DELETE',
-          `/api/emails/templates/${must(input.templateId, 'templateId')}`,
+          `/api/emails/templates/${encodeURIComponent(must(input.templateId, 'templateId'))}`,
         )
         return {
           forModel: { deleted: true, id: t?.id ?? input.templateId },
@@ -145,13 +145,13 @@ export const sendOutreachBatch = defineTool({
   inputSchema: z.object({
     templateId: z.string().describe('使用的邮件模板 ID'),
     receivers: z
-      .array(z.object({ email: z.string(), nickname: z.string().optional() }))
+      .array(z.object({ email: z.string().email(), nickname: z.string().optional() }))
       .min(1)
       .max(1000)
       .describe(
         '收件人列表。每项必须带 email（取达人数据里的 email 字段），可选 nickname 用于称呼；没有邮箱的达人不能加入，直接跳过并在回复里说明。不接受 kolId。',
       ),
-    usingEmail: z.string().optional().describe('指定发信邮箱；不传用默认'),
+    usingEmail: z.string().email().optional().describe('指定发信邮箱；不传用默认'),
     scheduledSendAtHours: z.number().int().min(0).max(24).optional().describe('延迟 N 小时发送，0/不传为立即'),
     sendDelaySeconds: z.number().int().min(60).max(3600).optional().describe('封与封之间的间隔秒数，默认300'),
     deduplicate: z.boolean().optional().describe('是否对已发过的收件人去重，默认 true'),
@@ -268,8 +268,8 @@ export const sendSingleEmail = defineTool({
     kolId: z.string().describe('达人 kolId'),
     templateId: z.string().describe('邮件模板 ID'),
     projectId: z.string().describe('项目 ID'),
-    email: z.string().optional().describe('收件邮箱；不传则用达人档案邮箱'),
-    usingEmail: z.string().optional().describe('发件邮箱；不传用默认'),
+    email: z.string().email().optional().describe('收件邮箱；不传则用达人档案邮箱'),
+    usingEmail: z.string().email().optional().describe('发件邮箱；不传用默认'),
   }),
   summarize: (input) =>
     `用模板 ${input.templateId} 给达人 ${input.kolId} 立即发送一封邮件${input.email ? `（${input.email}）` : ''}`,
@@ -315,8 +315,8 @@ export const manageOutreachQueue = defineTool({
   inputSchema: z.object({
     action: z.enum(['cancel_pending', 'resume_paused', 'reassign_paused']),
     planIds: z.array(z.string()).min(1).max(1000).optional().describe('cancel_pending 时必填：自动邮件计划 ID'),
-    fromEmail: z.string().optional().describe('reassign_paused 可选：只迁移这个发件邮箱下暂停的任务'),
-    toEmails: z.array(z.string()).max(50).optional().describe('reassign_paused 可选：目标发件邮箱列表，不传用所有可用邮箱'),
+    fromEmail: z.string().email().optional().describe('reassign_paused 可选：只迁移这个发件邮箱下暂停的任务'),
+    toEmails: z.array(z.string().email()).max(50).optional().describe('reassign_paused 可选：目标发件邮箱列表，不传用所有可用邮箱'),
   }),
   summarize: (input) => {
     const map: Record<string, string> = {
@@ -388,11 +388,4 @@ function resultItems(r: unknown): { label: string; value: string | number }[] {
     .filter(([, v]) => typeof v === 'number' || typeof v === 'string')
     .slice(0, 8)
     .map(([k, v]) => ({ label: k, value: v as string | number }))
-}
-
-function must<T>(value: T | undefined, name: string): T {
-  if (value === undefined || value === null || value === '') {
-    throw new Error(`缺少参数 ${name}`)
-  }
-  return value
 }
