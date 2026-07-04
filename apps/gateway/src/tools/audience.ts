@@ -44,15 +44,18 @@ export const analyzeAudience = defineTool({
       const source = requireParam(input.source, 'source').replace(/^@/, '')
       const projectId = await ensureProject(ctx, input.projectId)
       await ctx.backend.post('/api/search/audienceAnalysis', { projectId, platform, source })
-      // 轮询结果接口：进行中会带 taskId，完成后画像字段有值
+      // 轮询结果接口。backend 只在任务 PENDING/PROCESSING 时返回 taskId：
+      // 无 taskId 即终态——成功时画像字段有值；任务 FAILED（或结果残缺/过期）时
+      // 返回 needCreateTask=true 且画像全空，靠下面的空结果检查报"分析失败"，
+      // 不能把它当"未完成"继续轮询（会傻等满 600s 才报误导性的超时）
       const result = await ctx.backend.callBackendTask<null, SingleAudienceResult>({
         create: async () => null,
         poll: (client) => client.get<SingleAudienceResult>('/api/search/audienceAnalysis', { platform, source }),
-        isDone: (r) => !r.taskId && (!r.needCreateTask || Boolean(r.userPortraitResult)),
+        isDone: (r) => !r.taskId,
         timeoutMs: 600_000,
       })
       if (!result.userPortraitResult && !result.regionAnalysisResult) {
-        return { forModel: { error: '受众分析未产出结果，可稍后重试或换一个账号' } }
+        return { forModel: { error: '受众分析任务失败或未产出结果，可稍后重试或换一个账号' } }
       }
       let exportUrl: string | null = null
       try {
