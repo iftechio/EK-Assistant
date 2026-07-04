@@ -52,16 +52,16 @@ const STARTER_CARDS = [
   },
 ]
 
-const WORKFLOW_ITEMS = ['搜索', '筛选', '收藏', '外联', '追踪']
-
 export default function Chat({
   sessionId,
   resetToken,
   onSessionCreated,
+  onTurnDone,
 }: {
   sessionId: string | null
   resetToken: number
   onSessionCreated: (id: string) => void
+  onTurnDone?: () => void
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -168,10 +168,29 @@ export default function Chat({
     inputRef.current?.focus()
   }
 
-  const send = async () => {
-    const message = input.trim()
+  const autosize = () => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }
+
+  const stop = () => abortRef.current?.abort()
+
+  /** 重发最后一条用户消息（出错后的重试入口） */
+  const retryLast = () => {
+    if (busy) return
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    if (lastUser) send(lastUser.text)
+  }
+
+  const send = async (overrideText?: string) => {
+    const message = (overrideText ?? input).trim()
     if (!message || busy) return
-    setInput('')
+    if (overrideText == null) {
+      setInput('')
+      requestAnimationFrame(autosize)
+    }
     setBusy(true)
     setElapsedSeconds(0)
     turnStartedAt.current = Date.now()
@@ -278,11 +297,13 @@ export default function Chat({
       }
       turnStartedAt.current = null
       setBusy(false)
+      // 新会话首轮结束后标题才生成，通知侧栏刷新
+      onTurnDone?.()
     }
   }
 
   return (
-    <main className="chat">
+    <main className={`chat ${messages.length === 0 ? 'empty' : ''}`}>
       <div
         className="message-list"
         ref={listRef}
@@ -294,42 +315,9 @@ export default function Chat({
       >
         {messages.length === 0 && (
           <div className="hero">
-            <div className="hero-main">
-              <div className="hero-copy">
-                <div className="hero-kicker">EasyKOL Assistant</div>
-                <h1 className="hero-title">达人营销工作台</h1>
-                <p className="hero-greeting">把搜索、收藏、邮件外联和投放追踪串成一条工作流。</p>
-              </div>
-              <div className="hero-flow" aria-label="工作流">
-                {WORKFLOW_ITEMS.map((item, i) => (
-                  <div key={item} className="flow-step">
-                    <span className="flow-index">{i + 1}</span>
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="hero-cards">
-              {STARTER_CARDS.map((c) => (
-                <button key={c.title} className="hero-card" onClick={() => pickStarter(c.prompt)}>
-                  <div className="hero-card-top">
-                    <div className="hero-card-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        {c.icon}
-                      </svg>
-                    </div>
-                    <span className="hero-card-arrow">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14" />
-                        <path d="m13 6 6 6-6 6" />
-                      </svg>
-                    </span>
-                  </div>
-                  <div className="hero-card-title">{c.title}</div>
-                  <div className="hero-card-desc">{c.desc}</div>
-                </button>
-              ))}
-            </div>
+            <img className="hero-logo" src="/ek-icon.png" alt="" />
+            <h1 className="hero-title">达人营销工作台</h1>
+            <p className="hero-greeting">把搜索、收藏、邮件外联和投放追踪串成一条工作流。</p>
           </div>
         )}
         {messages.map((m, i) => (
@@ -338,6 +326,7 @@ export default function Chat({
             message={m}
             active={busy && i === messages.length - 1 && m.role === 'assistant'}
             elapsedSeconds={elapsedSeconds}
+            onRetry={!busy && i === messages.length - 1 ? retryLast : undefined}
           />
         ))}
         <div ref={bottomRef} />
@@ -359,8 +348,11 @@ export default function Chat({
           <textarea
             ref={inputRef}
             value={input}
-            placeholder="描述你的需求"
-            onChange={(e) => setInput(e.target.value)}
+            placeholder="描述你的需求，Enter 发送，Shift+Enter 换行"
+            onChange={(e) => {
+              setInput(e.target.value)
+              autosize()
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 if (e.nativeEvent.isComposing) return
@@ -368,11 +360,10 @@ export default function Chat({
                 send()
               }
             }}
-            rows={2}
+            rows={1}
           />
           <div className="composer-bar">
             <div className="composer-meta">
-              <span className="composer-hint">Enter 发送，Shift+Enter 换行</span>
               {cost && (cost.cap > 0 || cost.spent > 0) && (
                 <span className="quota-group" aria-label="配额信息">
                   <span className="quota-pill">本会话已用 {cost.spent}</span>
@@ -381,14 +372,44 @@ export default function Chat({
                   )}
                 </span>
               )}
-              {busy && <span className="busy-hint">思考中...</span>}
+              {busy && <span className="busy-hint">思考中 · {elapsedSeconds}s</span>}
             </div>
-            <button className="send-btn" onClick={send} disabled={busy || !input.trim()} aria-label={busy ? '思考中' : '发送'}>
-              {busy ? <span className="send-spinner" /> : '→'}
-            </button>
+            {busy ? (
+              <button className="send-btn stop" onClick={stop} aria-label="停止生成" title="停止生成">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="7" y="7" width="10" height="10" rx="1.5" />
+                </svg>
+              </button>
+            ) : (
+              <button className="send-btn" onClick={() => send()} disabled={!input.trim()} aria-label="发送" title="发送">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5" />
+                  <path d="m5 12 7-7 7 7" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       </div>
+      {messages.length === 0 && (
+        <div className="starter-wrap">
+          <div className="hero-cards">
+            {STARTER_CARDS.map((c) => (
+              <button key={c.title} className="hero-card" onClick={() => pickStarter(c.prompt)}>
+                <span className="hero-card-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    {c.icon}
+                  </svg>
+                </span>
+                <span className="hero-card-text">
+                  <span className="hero-card-title">{c.title}</span>
+                  <span className="hero-card-desc">{c.desc}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </main>
   )
 }

@@ -145,6 +145,25 @@ export class SessionStore {
     return rows
   }
 
+  /** 重命名会话：带 user_id 校验，防止越权改他人会话 */
+  async renameSession(id: string, userId: string, title: string): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE assistant_sessions SET title = $3, updated_at = now()
+       WHERE id = $1 AND user_id = $2`,
+      [id, userId, title],
+    )
+    return (rowCount ?? 0) > 0
+  }
+
+  /** 删除会话：messages / pending_actions 由外键 ON DELETE CASCADE 一并清理 */
+  async deleteSession(id: string, userId: string): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      `DELETE FROM assistant_sessions WHERE id = $1 AND user_id = $2`,
+      [id, userId],
+    )
+    return (rowCount ?? 0) > 0
+  }
+
   async touchSession(id: string, patch: { title?: string }): Promise<void> {
     await this.pool.query(
       `UPDATE assistant_sessions

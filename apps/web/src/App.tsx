@@ -29,6 +29,8 @@ export default function App() {
   // StrictMode 下 effect 会执行两次；并发跑两个 bootstrap 会在 verifyOtp 在途时误判无会话而跳走
   const bootstrapped = useRef(false)
   const hadSession = useRef(false)
+  // 主动登出时跳 easykol-web 首页而不是登录接力页，否则接力页会瞬间重新登录，登出变成无操作
+  const loggingOut = useRef(false)
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -74,6 +76,10 @@ export default function App() {
         hadSession.current = true
         setSession(s)
       } else if (event === 'SIGNED_OUT' && hadSession.current) {
+        if (loggingOut.current) {
+          window.location.replace(EK_WEB_URL)
+          return
+        }
         // 只在确实登录过之后的登出才重新接力，避免初始化期间的清理事件触发跳转
         autoRedirectToEkWebAuth()
       }
@@ -81,7 +87,16 @@ export default function App() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  if (session) return <Workspace userEmail={session.user.email ?? ''} />
+  if (session)
+    return (
+      <Workspace
+        userEmail={session.user.email ?? ''}
+        onLogout={async () => {
+          loggingOut.current = true
+          await supabase.auth.signOut()
+        }}
+      />
+    )
   if (phase === 'error') {
     return (
       <div className="center-page">

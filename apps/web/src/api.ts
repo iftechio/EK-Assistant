@@ -75,6 +75,23 @@ export async function listSessions(): Promise<SessionSummary[]> {
   return res.json()
 }
 
+export async function renameSession(sessionId: string, title: string): Promise<void> {
+  const res = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: await authHeaders(),
+    body: JSON.stringify({ title }),
+  })
+  if (!res.ok) throw new Error('重命名失败')
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  })
+  if (!res.ok) throw new Error('删除失败')
+}
+
 export async function getSessionMessages(sessionId: string): Promise<{
   session: SessionSummary & { quotaSpent: number }
   messages: { id: string; role: string; content: any; display: any[] | null; createdAt: string }[]

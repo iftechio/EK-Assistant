@@ -54,6 +54,27 @@ export function registerSessionRoutes(app: FastifyInstance, store: SessionStore)
     }
   })
 
+  app.patch<{ Params: { id: string }; Body: { title?: string } }>(
+    '/api/sessions/:id',
+    async (request, reply) => {
+      const user = await auth(request, reply)
+      if (!user) return
+      const title = (request.body?.title ?? '').trim()
+      if (!title) return reply.status(400).send({ error: '标题不能为空' })
+      const ok = await store.renameSession(request.params.id, user.userId, title.slice(0, 100))
+      if (!ok) return reply.status(404).send({ error: '会话不存在' })
+      return { ok: true }
+    },
+  )
+
+  app.delete<{ Params: { id: string } }>('/api/sessions/:id', async (request, reply) => {
+    const user = await auth(request, reply)
+    if (!user) return
+    const ok = await store.deleteSession(request.params.id, user.userId)
+    if (!ok) return reply.status(404).send({ error: '会话不存在' })
+    return { ok: true }
+  })
+
   app.get<{ Querystring: { sessionId?: string } }>('/api/activity', async (request, reply) => {
     const user = await auth(request, reply)
     if (!user) return

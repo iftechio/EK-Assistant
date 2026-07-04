@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChatMessage } from '../types'
 import ToolCard from './ToolCard'
 import ConfirmCard from './ConfirmCard'
@@ -8,10 +8,12 @@ export default function MessageView({
   message,
   active = false,
   elapsedSeconds = 0,
+  onRetry,
 }: {
   message: ChatMessage
   active?: boolean
   elapsedSeconds?: number
+  onRetry?: () => void
 }) {
   if (message.role === 'assistant') {
     return (
@@ -35,7 +37,17 @@ export default function MessageView({
             // 确认状态复用到 B 会话的另一个 action 上（可能导致重复批准）
             <ConfirmCard key={c.action.id} confirmation={c} />
           ))}
-          {message.error && <div className="error-text">⚠️ {message.error}</div>}
+          {message.error && (
+            <div className="error-text">
+              ⚠️ {message.error}
+              {onRetry && (
+                <button className="retry-btn" onClick={onRetry}>
+                  重试
+                </button>
+              )}
+            </div>
+          )}
+          {!active && message.text && <TurnActions text={message.text} />}
         </div>
       </section>
     )
@@ -43,7 +55,6 @@ export default function MessageView({
 
   return (
     <div className="user-note">
-      <div className="user-note-avatar">我</div>
       <div className="user-note-chip">
         <MarkdownText text={message.text} />
       </div>
@@ -51,7 +62,42 @@ export default function MessageView({
   )
 }
 
-/** 工具执行过程面板：步骤行常显，结果卡片默认展开、可点击标题收起 */
+/** 回合底部悬停操作：目前只有复制 */
+function TurnActions({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="turn-actions">
+      <button
+        className="msg-action"
+        aria-label="复制回答"
+        title="复制回答"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(text)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          } catch {
+            // 剪贴板权限被拒时静默失败
+          }
+        }}
+      >
+        {copied ? (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="12" height="12" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        )}
+        {copied ? '已复制' : '复制'}
+      </button>
+    </div>
+  )
+}
+
+/** 工具执行过程面板：运行中展开显示进度，完成后自动折叠为一行摘要 */
 function StepsPanel({
   message,
   active,
@@ -61,22 +107,27 @@ function StepsPanel({
   active: boolean
   elapsedSeconds: number
 }) {
-  const hasCards = message.activities.some((a) => a.display)
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(active)
+  const wasActive = useRef(active)
+  useEffect(() => {
+    if (wasActive.current && !active) setExpanded(false)
+    wasActive.current = active
+  }, [active])
+
   const seconds = active ? elapsedSeconds : message.processedSeconds
+  const stepCount = message.activities.length
+  const showBody = active || expanded
 
   return (
-    <div className={`steps-panel ${active ? 'active' : ''}`}>
-      <button
-        className="steps-head"
-        onClick={() => hasCards && setExpanded((v) => !v)}
-        disabled={!hasCards}
-      >
+    <div className={`steps-panel ${active ? 'active' : ''} ${showBody ? '' : 'collapsed'}`}>
+      <button className="steps-head" onClick={() => setExpanded((v) => !v)} disabled={active}>
         <span className="steps-title">
-          {active ? '任务进行中' : '任务已完成'}
+          {active
+            ? '任务进行中'
+            : `已完成${stepCount ? ` ${stepCount} 步` : ''}`}
           {seconds ? ` · ${seconds}s` : ''}
         </span>
-        {hasCards && (
+        {!active && (
           <span className={`steps-chevron ${expanded ? 'open' : ''}`}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m6 9 6 6 6-6" />
@@ -85,30 +136,31 @@ function StepsPanel({
         )}
       </button>
 
-      {message.activities.map((a, i) => (
-        <div key={i} className="steps-item">
-          <div className={`step-row ${a.status}`}>
-            <span className="step-icon">
-              {a.status === 'running' ? (
-                <span className="step-spinner" />
-              ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              )}
-            </span>
-            <span className="step-label">
-              {toolStatusText(a.toolName, a.status)}
-              {a.estimatedQuota ? <span className="quota-chip">预估 {a.estimatedQuota}</span> : null}
-            </span>
-          </div>
-          {expanded && a.display && (
-            <div className="step-card">
-              <ToolCard display={a.display} />
+      {showBody &&
+        message.activities.map((a, i) => (
+          <div key={i} className="steps-item">
+            <div className={`step-row ${a.status}`}>
+              <span className="step-icon">
+                {a.status === 'running' ? (
+                  <span className="step-spinner" />
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                )}
+              </span>
+              <span className="step-label">
+                {toolStatusText(a.toolName, a.status)}
+                {a.estimatedQuota ? <span className="quota-chip">预估 {a.estimatedQuota}</span> : null}
+              </span>
             </div>
-          )}
-        </div>
-      ))}
+            {a.display && (
+              <div className="step-card">
+                <ToolCard display={a.display} />
+              </div>
+            )}
+          </div>
+        ))}
 
       {active && message.activities.length === 0 && (
         <div className="steps-item">
