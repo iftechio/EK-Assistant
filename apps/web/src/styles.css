@@ -883,6 +883,78 @@ td {
   color: var(--subtle);
 }
 
+.analysis-summary {
+  margin: 10px 0 4px;
+  font-size: 13px;
+}
+.analysis-section {
+  margin-top: 10px;
+}
+.analysis-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.analysis-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.analysis-quotes {
+  margin-top: 2px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.template-row {
+  border-bottom: 1px solid #f0f1f2;
+  padding: 6px 0;
+}
+.template-row:last-of-type {
+  border-bottom: none;
+}
+.template-row summary {
+  font-size: 13px;
+  color: inherit;
+}
+.template-name {
+  font-weight: 600;
+}
+.template-content {
+  margin-top: 6px;
+}
+.chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: #f7f8f9;
+}
+.chip-ai {
+  border-style: dashed;
+}
+.chip-count {
+  color: var(--subtle);
+  margin-left: 2px;
+}
+.download-link {
+  font-size: 13px;
+  color: var(--brand);
+  text-decoration: none;
+}
+.download-link:hover {
+  text-decoration: underline;
+}
+
 .confirm-card {
   border: 1px solid #ffd591;
   background: #fffbe6;

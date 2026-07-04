@@ -18,7 +18,7 @@ export type AgentEvent =
   | { type: 'tool-start'; toolName: string; input: unknown; estimatedQuota?: number }
   | { type: 'tool-result'; toolName: string; display?: ToolDisplay }
   | { type: 'confirmation-required'; action: PendingActionView }
-  | { type: 'cost'; spent: number; cap: number }
+  | { type: 'cost'; spent: number; cap: number; accountRemaining?: number }
   | { type: 'error'; message: string }
   | { type: 'done'; sessionId: string }
 
@@ -44,6 +44,9 @@ export interface ToolContext {
   costMeter: CostMeter
   emit: (event: AgentEvent) => void
   logActivity: (summary: string, detail?: unknown) => Promise<void>
+  /** 轻量记忆：按 (user, key) 持久化的用户偏好（remember_preference 工具用） */
+  saveMemory: (key: string, value: unknown) => Promise<void>
+  deleteMemory: (key: string) => Promise<void>
 }
 
 export interface ToolExecuteResult {

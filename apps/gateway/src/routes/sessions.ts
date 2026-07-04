@@ -30,6 +30,7 @@ export function registerSessionRoutes(app: FastifyInstance, store: SessionStore)
     const session = await store.getSession(request.params.id, user.userId)
     if (!session) return reply.status(404).send({ error: '会话不存在' })
     const messages = await store.listMessages(session.id, true)
+    const pendingActions = await store.listPendingActions(session.id, user.userId)
     return {
       session: {
         id: session.id,
@@ -42,6 +43,13 @@ export function registerSessionRoutes(app: FastifyInstance, store: SessionStore)
         content: m.content,
         display: m.display,
         createdAt: m.created_at,
+      })),
+      pendingActions: pendingActions.map((a) => ({
+        id: a.id,
+        toolName: a.tool_name,
+        summary: a.summary,
+        input: a.input,
+        estimatedQuota: a.estimated_quota ?? undefined,
       })),
     }
   })
