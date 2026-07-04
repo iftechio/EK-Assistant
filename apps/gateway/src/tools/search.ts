@@ -228,7 +228,7 @@ export const findSimilarKols = defineTool({
 export const parseSearchIntent = defineTool({
   name: 'parse_search_intent',
   description:
-    '智能搜索 Pro 的解析步骤：把用户一句话解析成可勾选的规范化标签（canonicalTags）和博主原文词（keywords），都带库存命中量，同时解析出结构化筛选条件。免费、不扣配额。用法：先 parse 给用户看解析结果卡片，等用户确认要哪些标签/词后，把选中项传给 search_kols 的 canonicalTags/keywords 参数执行真正搜索。action=more_words 可基于同一句话再扩一批原文词。',
+    '智能搜索 Pro 的解析步骤：把用户一句话解析成可勾选的规范化标签（canonicalTags）和博主原文词（keywords），都带库存命中量，同时解析出结构化筛选条件。免费、不扣配额。调用时 sentence 必须直接使用用户原始搜索描述，不能省略。用法：先 parse 给用户看解析结果卡片，等用户确认要哪些标签/词后，把选中项传给 search_kols 的 canonicalTags/keywords 参数执行真正搜索。action=more_words 可基于同一句话再扩一批原文词。',
   permission: 'auto',
   inputSchema: z.object({
     action: z.enum(['parse', 'more_words']).optional().describe('默认 parse'),
@@ -301,7 +301,7 @@ const DISCOVER_ENDPOINTS: Record<DiscoverMode, { create: string; list: string; l
 export const discoverKolsBySource = defineTool({
   name: 'discover_kols_by_source',
   description:
-    '细分模式达人发现（目前仅支持 TIKTOK）：hashtag=话题标签下的活跃达人 / bgm=用了某音乐的达人 / following_list=某账号关注的达人 / followers_list=某账号的粉丝达人。适合"用这首歌的博主""这个账号关注了谁"类需求。消耗配额：每 300 条抓取量 10 分（默认 300）。',
+    '细分模式达人发现（目前仅支持 TIKTOK）：hashtag=话题标签下的活跃达人（必须传 tag，例如 makeup，不带 #）/ bgm=用了某音乐的达人（必须传 musicUrl）/ following_list=某账号关注的达人（必须传 uniqueId，不带 @）/ followers_list=某账号的粉丝达人（必须传 uniqueId，不带 @）。适合"用这首歌的博主""这个账号关注了谁"类需求。消耗配额：每 300 条抓取量 10 分（默认 300）。',
   permission: 'quota',
   inputSchema: z.object({
     mode: z.enum(DISCOVER_MODES),

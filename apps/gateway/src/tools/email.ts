@@ -104,7 +104,7 @@ export const manageEmailTemplate = defineTool({
 export const setTemplateFollowups = defineTool({
   name: 'set_template_followups',
   description:
-    '【高风险】配置模板的自动跟进（followup）邮件序列。配置后，用该模板发出的每封初始邮件都会按 daysAfter 自动发送跟进邮件（真实发送、不可撤回），因此必须由用户在确认卡片上批准后才生效。',
+    '【高风险】配置模板的自动跟进（followup）邮件序列。followups 里的每一项必须是跟进邮件正文 content 和初始邮件后第几天发送 daysAfter，不是跟进模板 ID。配置后，用该模板发出的每封初始邮件都会按 daysAfter 自动发送跟进邮件（真实发送、不可撤回），因此必须由用户在确认卡片上批准后才生效。',
   permission: 'confirm',
   inputSchema: z.object({
     templateId: z.string().describe('要配置跟进的邮件模板 ID'),
@@ -140,7 +140,7 @@ export const setTemplateFollowups = defineTool({
 export const sendOutreachBatch = defineTool({
   name: 'send_outreach_batch',
   description:
-    '【高风险】批量发送 outreach 邮件给真实达人，不可撤回。调用后会生成确认卡片，必须等用户在界面上批准后才真正发送。调用前先确保：模板已建好、收件人列表明确。建议同时给用户一份完整计划（发给谁、用什么模板、何时跟进）。',
+    '【高风险】批量发送 outreach 邮件给真实达人，不可撤回。调用后会生成确认卡片，必须等用户在界面上批准后才真正发送。只接受 templateId + receivers[]（每项 email/nickname），不接受 kolIds、kolEmails、kolHandles 或 projectId；如果用户给的是达人名单，必须先从工具结果里取出有邮箱的 receivers。调用前先确保：模板已建好、收件人列表明确。建议同时给用户一份完整计划（发给谁、用什么模板、何时跟进）。',
   permission: 'confirm',
   inputSchema: z.object({
     templateId: z.string().describe('使用的邮件模板 ID'),

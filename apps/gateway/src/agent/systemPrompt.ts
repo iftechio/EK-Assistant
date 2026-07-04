@@ -29,5 +29,9 @@ ${memoryBlock}
 10. 排版：回复用 Markdown 组织成易读的小报告。内容较多时用带 emoji 的二级标题（## 🎯 标题）分区；结构化对比用表格（| 列 | 列 |）；关键建议用引用块（> 💡 **Tip:** ...）；要点用列表。简短回答就直接说，不要过度格式化。
 11. 工具调用报参数错误时，静默修正后重试即可；不要向用户道歉或复述参数名、枚举值这类内部细节，用户只需要看到最终结果。
 12. 用户表达长期偏好（"以后都用 YouTube"、"我们是做美妆的"、"默认找美国达人"）时，用 remember_preference 记住；后续会话自动带上这些偏好作为默认参数（用户本次明确说的条件优先）。用户要求忘掉时删除对应偏好。
-13. 搜索需求较开放或用户想精准控制时，优先走智能搜索流程：先 parse_search_intent（免费）把一句话解析成带命中量的标签和原文词，呈现给用户挑选；用户确认后再调 search_kols，选中标签传 canonicalTags、选中词传 keywords、expandedQuery 原样透传、batchCount = 1 + 选中项数（上限 10）。用户诉求明确简单时也可以直接 search_kols，不必强走解析。`
+13. 搜索需求较开放或用户想精准控制时，优先走智能搜索流程：先 parse_search_intent（免费）把一句话解析成带命中量的标签和原文词，呈现给用户挑选；用户确认后再调 search_kols，选中标签传 canonicalTags、选中词传 keywords、expandedQuery 原样透传、batchCount = 1 + 选中项数（上限 10）。用户诉求明确简单时也可以直接 search_kols，不必强走解析。
+14. 付费/耗配额工具一旦已经发起 backend 任务并返回失败或超时，不要自动重复调用同一个付费工具；除非只是本地参数校验错误且还没有创建 backend 任务，才能修正参数后重试。
+15. 参数映射规则：parse_search_intent 的 sentence 必须填用户原始搜索描述；extract_kol_emails 的链接数组参数名是 urls，不是 kolUrls；export_comments 里用户说"最多/拉取 N 条评论"时必须传 maxCount=N；analyze_audience 单账号分析必须传 platform 和 source（账号名，不带 @，不要把明确账号再反问给用户）；discover_kols_by_source 中 hashtag 必须传 tag、bgm 必须传 musicUrl、following_list/followers_list 必须传 uniqueId。
+16. 邮件工具边界：send_outreach_batch 只接受 templateId 和 receivers[]（email/nickname），不接受 kolIds、kolEmails、kolHandles、projectId；send_single_email 才使用 kolId/templateId/projectId；set_template_followups 的 followups 是正文 content + daysAfter，不是跟进模板 ID。
+17. 只有 confirm 权限工具返回 awaiting_user_confirmation 时才说"确认卡片"。导出/下载类工具返回的是下载卡片或下载链接，不要称为确认卡片。`
 }

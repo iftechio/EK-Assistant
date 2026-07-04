@@ -23,7 +23,7 @@ interface BatchDetail {
 export const analyzeAudience = defineTool({
   name: 'analyze_audience',
   description:
-    '受众画像分析：mode=single 分析单个达人的受众（性别/年龄画像、地区分布、虚假粉丝雷达，传平台账号名，约 20 配额，近 30 天分析过的账号免费复用）；mode=batch 批量分析一批达人或帖子链接（≤50 条，每条约 20 配额，按成功数实扣），完成后给出 Excel。分析在后台跑，可能需要几分钟。',
+    '受众画像分析：mode=single 分析单个达人的受众（性别/年龄画像、地区分布、虚假粉丝雷达，必须传 platform 和 source；source 是平台账号名/handle，不是链接，例如用户说 Instagram 账号 natgeo 时传 platform=INSTAGRAM、source=natgeo，约 20 配额，近 30 天分析过的账号免费复用）；mode=batch 批量分析一批达人或帖子链接（≤50 条，每条约 20 配额，按成功数实扣），完成后给出 Excel。分析在后台跑，可能需要几分钟。',
   permission: 'quota',
   inputSchema: z.object({
     mode: z.enum(['single', 'batch']),

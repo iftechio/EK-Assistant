@@ -99,6 +99,7 @@ export async function runAgentTurn(args: {
 
   const pool = getModelPool()
   let lastError: unknown
+  let anyTextEmitted = false
   // 增量落库游标：onStepFinish 的 response.messages 是累积数组，每步只落新增部分。
   // 这样流中途出错时，已执行的 tool-call/tool-result 也在历史里，下轮模型
   // 不会因为看不到已做过的搜索而重做一次、重扣一次配额。
@@ -126,6 +127,7 @@ export async function runAgentTurn(args: {
       for await (const part of result.fullStream) {
         if (part.type === 'text-delta') {
           textEmitted = true
+          anyTextEmitted = true
           emit({ type: 'text-delta', delta: part.text })
         } else if (part.type === 'error') {
           throw part.error
@@ -157,6 +159,20 @@ export async function runAgentTurn(args: {
       // 已有消息落库（重放会产生重复历史）时禁止 failover 重放
       if (textEmitted || toolStarted || persistedCount > 0) break
     }
+  }
+
+  if (displays.length) {
+    const fallbackText = '工具已完成，结果见上方卡片；模型总结暂时生成失败。'
+    lastPersistedId = await store.appendMessage(session.id, {
+      role: 'assistant',
+      content: anyTextEmitted ? '' : fallbackText,
+    } as ModelMessage, displays)
+    if (!anyTextEmitted) emit({ type: 'text-delta', delta: fallbackText })
+    emit({ type: 'done', sessionId: session.id })
+    maybeCompact(store, session.id, session.context_summary).catch((err) => {
+      console.error(`[compact] 会话 ${session.id} 上下文压缩失败:`, err)
+    })
+    return
   }
 
   const message = lastError instanceof Error ? lastError.message : String(lastError)

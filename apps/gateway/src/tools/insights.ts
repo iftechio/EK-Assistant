@@ -36,7 +36,11 @@ export const extractKolEmails = defineTool({
   inputSchema: z.object({
     urls: z.array(z.string()).min(1).max(500).describe('达人主页链接列表'),
   }),
-  estimateQuota: (input) => Math.max(1, Math.ceil(input.urls.length / 5)),
+  estimateQuota: (input) => {
+    const { ttUrls, ytbUrls, insUrls } = classifyKolUrls(input.urls)
+    const recognized = ttUrls.length + ytbUrls.length + insUrls.length
+    return recognized ? Math.ceil(recognized / 5) : 0
+  },
   summarize: (input) => `提取 ${input.urls.length} 个达人的邮箱`,
   execute: async (input, ctx) => {
     const { ttUrls, ytbUrls, insUrls, unknown } = classifyKolUrls(input.urls)

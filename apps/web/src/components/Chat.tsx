@@ -362,7 +362,6 @@ export default function Chat({
               {cost && (cost.cap > 0 || cost.spent > 0) && (
                 <span className="quota-hint">
                   本会话配额消耗 {cost.spent}
-                  {cost.cap > 0 ? ` / ${cost.cap}` : ''}
                   {cost.accountRemaining != null && ` · 账户剩余 ${cost.accountRemaining}`}
                 </span>
               )}

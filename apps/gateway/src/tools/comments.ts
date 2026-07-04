@@ -80,7 +80,7 @@ export function getCachedComments(sessionId: string, url?: string): FetchComment
 export const exportComments = defineTool({
   name: 'export_comments',
   description:
-    '拉取某条视频的全部评论（支持 TIKTOK/YOUTUBE），供用户下载 Excel 或后续分析。消耗配额（每 100 条评论 1 个任务点，默认 200 条 = 2 点，任务失败自动退费）。拉取后可直接调用 analyze_comments_feedback 做反馈分析（不重复扣费）。',
+    '拉取某条视频的评论（支持 TIKTOK/YOUTUBE），供用户下载 Excel 或后续分析。用户说"最多/拉取 N 条评论"时必须把 N 传给 maxCount，不要使用默认值。消耗配额（每 100 条评论 1 个任务点，默认 200 条 = 2 点，任务失败自动退费）。拉取后可直接调用 analyze_comments_feedback 做反馈分析（不重复扣费）。',
   permission: 'quota',
   inputSchema: z.object({
     platform: z.enum(COMMENT_PLATFORMS).optional().describe('平台；不传则根据链接自动识别'),
@@ -174,6 +174,30 @@ export const analyzeCommentsFeedback = defineTool({
       return {
         forModel: {
           error: '没有可分析的评论缓存，请先用 export_comments 拉取该视频的评论',
+        },
+      }
+    }
+    if (cached.comments.length === 0) {
+      return {
+        forModel: {
+          analyzedComments: 0,
+          summary: '没有评论可分析',
+          sentiment: { positivePct: 0, negativePct: 0, neutralPct: 100 },
+          positives: [],
+          negatives: [],
+          questions: [],
+        },
+        display: {
+          kind: 'comment-analysis',
+          data: {
+            url: cached.url,
+            analyzedComments: 0,
+            summary: '没有评论可分析',
+            sentiment: { positivePct: 0, negativePct: 0, neutralPct: 100 },
+            positives: [],
+            negatives: [],
+            questions: [],
+          },
         },
       }
     }
