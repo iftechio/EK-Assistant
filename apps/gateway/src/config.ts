@@ -34,6 +34,8 @@ export const config = {
   /** create→poll 轮询参数 */
   taskPollIntervalMs: num('ASSISTANT_TASK_POLL_INTERVAL_MS', 3000),
   taskPollTimeoutMs: num('ASSISTANT_TASK_POLL_TIMEOUT_MS', 300000),
+  /** backend 单次 HTTP 请求超时（防止 backend 挂起拖死整轮对话） */
+  backendRequestTimeoutMs: num('ASSISTANT_BACKEND_REQUEST_TIMEOUT_MS', 60000),
 }
 
 export type Config = typeof config

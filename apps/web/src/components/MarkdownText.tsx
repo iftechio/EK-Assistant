@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { safeHref } from '../safeHref'
 
 export default function MarkdownText({ text }: { text: string }) {
   const blocks = parseBlocks(text)
@@ -213,12 +214,17 @@ function renderInline(text: string): ReactNode[] {
       nodes.push(<code key={nodes.length}>{token.slice(1, -1)}</code>)
     } else {
       const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
-      const href = link?.[2] ?? '#'
-      nodes.push(
-        <a key={nodes.length} href={href} target="_blank" rel="noreferrer">
-          {link?.[1] ?? token}
-        </a>,
-      )
+      const href = safeHref(link?.[2])
+      if (link && href) {
+        nodes.push(
+          <a key={nodes.length} href={href} target="_blank" rel="noreferrer">
+            {link[1]}
+          </a>,
+        )
+      } else {
+        // 协议不安全（如 javascript:）或格式不对：按纯文本展示，不产生可点击链接
+        nodes.push(link?.[1] ?? token)
+      }
     }
     lastIndex = pattern.lastIndex
   }

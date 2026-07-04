@@ -21,6 +21,8 @@ export async function runAgentTurn(args: {
   user: AuthUser
   userMessage: string
   emit: (event: AgentEvent) => void
+  /** 客户端断开时中止模型流，停止烧 token */
+  abortSignal?: AbortSignal
 }): Promise<void> {
   const { store, session, user, userMessage } = args
 
@@ -106,6 +108,7 @@ export async function runAgentTurn(args: {
         messages,
         tools,
         stopWhen: stepCountIs(config.maxSteps),
+        abortSignal: args.abortSignal,
       })
 
       for await (const part of result.fullStream) {
@@ -131,6 +134,8 @@ export async function runAgentTurn(args: {
       maybeCompact(store, session.id, session.context_summary).catch(() => {})
       return
     } catch (err) {
+      // 客户端已断开导致的中止：直接结束，不 failover 也不报错
+      if (args.abortSignal?.aborted) return
       lastError = err
       // 已开始输出文本（重复内容）或已执行过工具（重复扣配额/重复副作用）时禁止 failover 重放
       if (textEmitted || toolStarted) break

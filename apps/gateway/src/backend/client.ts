@@ -42,14 +42,23 @@ export class BackendClient {
     for (const [k, v] of Object.entries(opts.query ?? {})) {
       if (v !== undefined) url.searchParams.set(k, String(v))
     }
-    const res = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${this.jwt}`,
-        'Content-Type': 'application/json',
-      },
-      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-    })
+    let res: Response
+    try {
+      res = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${this.jwt}`,
+          'Content-Type': 'application/json',
+        },
+        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        signal: AbortSignal.timeout(config.backendRequestTimeoutMs),
+      })
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new BackendError(0, path, `请求超时（${config.backendRequestTimeoutMs}ms）`)
+      }
+      throw err
+    }
     const text = await res.text()
     if (!res.ok) {
       throw new BackendError(res.status, path, truncate(text, 500))

@@ -32,6 +32,9 @@ export function registerChatRoutes(app: FastifyInstance, store: SessionStore) {
 
     const sse = openSse(request, reply)
     sse.emit({ type: 'session', sessionId: session.id })
+    // 客户端断开（关页面/断网）时中止 agent，停止继续烧模型 token 和用户配额
+    const abort = new AbortController()
+    request.raw.on('close', () => abort.abort())
     try {
       await runAgentTurn({
         store,
@@ -39,6 +42,7 @@ export function registerChatRoutes(app: FastifyInstance, store: SessionStore) {
         user,
         userMessage: message,
         emit: sse.emit,
+        abortSignal: abort.signal,
       })
     } catch (err) {
       sse.emit({

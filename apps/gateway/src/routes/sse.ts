@@ -18,19 +18,23 @@ export function openSse(request: FastifyRequest, reply: FastifyReply) {
   })
   reply.raw.flushHeaders?.()
 
+  // 客户端异常断开时 socket 是 destroyed 而 writableEnded 仍为 false，
+  // 只查 writableEnded 会继续往已销毁的流上写
+  const gone = () => reply.raw.writableEnded || reply.raw.destroyed
+
   const heartbeat = setInterval(() => {
-    if (!reply.raw.writableEnded) reply.raw.write(': ping\n\n')
+    if (!gone()) reply.raw.write(': ping\n\n')
   }, 15000)
 
   return {
     emit(event: AgentEvent) {
-      if (!reply.raw.writableEnded) {
+      if (!gone()) {
         reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
       }
     },
     close() {
       clearInterval(heartbeat)
-      if (!reply.raw.writableEnded) reply.raw.end()
+      if (!gone()) reply.raw.end()
     },
   }
 }
