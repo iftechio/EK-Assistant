@@ -58,8 +58,12 @@ CREATE TABLE IF NOT EXISTS assistant_messages (
   content JSONB NOT NULL,
   display JSONB,
   compacted BOOLEAN NOT NULL DEFAULT FALSE,
+  seq BIGSERIAL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 旧表迁移：created_at 精度内同刻插入的消息顺序随机（id 是随机 UUID），
+-- tool-result 可能排到 tool-call 前面导致模型调用报错，改用插入序
+ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS seq BIGSERIAL;
 CREATE INDEX IF NOT EXISTS idx_assistant_messages_session ON assistant_messages(session_id, created_at);
 
 CREATE TABLE IF NOT EXISTS assistant_pending_actions (
@@ -181,7 +185,7 @@ export class SessionStore {
     const { rows } = await this.pool.query<MessageRow>(
       `SELECT * FROM assistant_messages WHERE session_id = $1
        ${includeCompacted ? '' : 'AND compacted = FALSE'}
-       ORDER BY created_at ASC, id ASC`,
+       ORDER BY seq ASC`,
       [sessionId],
     )
     return rows

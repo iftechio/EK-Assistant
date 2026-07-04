@@ -1,9 +1,15 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import { config } from '../config.js'
 import type { AgentEvent } from '../tools/types.js'
 
 /** 接管 reply 为 SSE 流；返回 emit/close */
 export function openSse(request: FastifyRequest, reply: FastifyReply) {
-  const origin = request.headers.origin
+  const rawOrigin = request.headers.origin
+  // 与 CORS 插件同一套白名单：配置了 ASSISTANT_ALLOWED_ORIGINS 时只反射白名单内的 origin
+  const origin =
+    rawOrigin && (config.allowedOrigins.length === 0 || config.allowedOrigins.includes(rawOrigin))
+      ? rawOrigin
+      : undefined
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',

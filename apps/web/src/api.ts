@@ -1,5 +1,5 @@
 import { getAccessToken } from './supabase'
-import type { AgentEvent, SessionSummary } from './types'
+import type { AgentEvent, PendingActionView, SessionSummary } from './types'
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'http://localhost:3002'
 
@@ -29,22 +29,26 @@ export async function streamChat(
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  const handleFrame = (part: string) => {
+    const line = part.split('\n').find((l) => l.startsWith('data: '))
+    if (!line) return
+    try {
+      onEvent(JSON.parse(line.slice(6)) as AgentEvent)
+    } catch {
+      // 忽略不完整帧
+    }
+  }
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     const parts = buffer.split('\n\n')
     buffer = parts.pop() ?? ''
-    for (const part of parts) {
-      const line = part.split('\n').find((l) => l.startsWith('data: '))
-      if (!line) continue
-      try {
-        onEvent(JSON.parse(line.slice(6)) as AgentEvent)
-      } catch {
-        // 忽略不完整帧
-      }
-    }
+    for (const part of parts) handleFrame(part)
   }
+  // flush 解码器残留并处理最后一个不以空行结尾的事件（如 done/error），否则会被静默丢弃
+  buffer += decoder.decode()
+  for (const part of buffer.split('\n\n')) handleFrame(part)
 }
 
 export async function confirmAction(
@@ -56,7 +60,13 @@ export async function confirmAction(
     headers: await authHeaders(),
     body: JSON.stringify({ approved }),
   })
-  return res.json()
+  // 网关 502/超时返回 HTML 时 res.json() 会抛无意义的解析错误
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error(`确认请求失败 (${res.status})，无法确定操作是否已执行，请刷新页面查看最新状态`)
+  }
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
@@ -68,6 +78,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
 export async function getSessionMessages(sessionId: string): Promise<{
   session: SessionSummary & { quotaSpent: number }
   messages: { id: string; role: string; content: any; display: any[] | null; createdAt: string }[]
+  pendingActions?: PendingActionView[]
 }> {
   const res = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/messages`, {
     headers: await authHeaders(),

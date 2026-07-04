@@ -1097,6 +1097,9 @@ function downloadKolsCsv(kols: any[]) {
 }
 
 function csvCell(value: unknown): string {
-  const text = String(value ?? '')
-  return `"${text.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`
+  let text = String(value ?? '').replace(/\r?\n/g, ' ')
+  // 防 CSV 公式注入：KOL 昵称等来自抓取的第三方内容，以 =+-@ 开头的单元格
+  // 在 Excel 打开时会被当公式执行，加前导单引号中和
+  if (/^[=+\-@\t]/.test(text)) text = `'${text}`
+  return `"${text.replace(/"/g, '""')}"`
 }

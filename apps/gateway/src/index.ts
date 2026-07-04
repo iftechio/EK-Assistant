@@ -17,7 +17,10 @@ async function main() {
     app.log.warn('未配置 SUPABASE_JWT_SECRET，JWT 仅解码不验签——仅限本地开发使用')
   }
 
-  await app.register(cors, { origin: true, credentials: true })
+  await app.register(cors, {
+    origin: config.allowedOrigins.length ? config.allowedOrigins : true,
+    credentials: true,
+  })
 
   const store = new SessionStore()
   await store.ensureSchema()
@@ -28,7 +31,12 @@ async function main() {
   registerSessionRoutes(app, store)
   registerExportRoutes(app)
 
+  let shuttingDown = false
   const shutdown = async () => {
+    if (shuttingDown) return // 连续两次信号会二次 close，pool.end 重复调用报错
+    shuttingDown = true
+    // SSE 长连接不会自然结束，app.close() 可能无限等待，超时强退
+    setTimeout(() => process.exit(1), 10000).unref()
     await app.close()
     await store.close()
     process.exit(0)

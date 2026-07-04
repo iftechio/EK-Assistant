@@ -124,7 +124,17 @@ export default function Chat({
         setMessages(restored)
       })
       .catch(() => {
-        if (!cancelled) setMessages([])
+        if (!cancelled) {
+          setMessages([
+            {
+              role: 'assistant',
+              text: '',
+              activities: [],
+              confirmations: [],
+              error: '加载会话历史失败，请刷新页面重试',
+            },
+          ])
+        }
       })
     return () => {
       cancelled = true
@@ -134,6 +144,10 @@ export default function Chat({
   useEffect(() => () => abortRef.current?.abort(), [])
 
   useEffect(() => {
+    // 用户已明显上滑（距底 >240px，与"回到底部"按钮同一阈值）时不强行拽回，
+    // 否则流式输出期间无法上滑阅读
+    const el = listRef.current
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight > 240) return
     bottomRef.current?.scrollIntoView({ behavior: busy ? 'auto' : 'smooth' })
   }, [busy, messages])
 
@@ -326,9 +340,10 @@ export default function Chat({
           <div className="composer-bar">
             <div className="composer-meta">
               <span className="composer-hint">Enter 发送，Shift+Enter 换行</span>
-              {cost && cost.cap > 0 && (
+              {cost && (cost.cap > 0 || cost.spent > 0) && (
                 <span className="quota-hint">
-                  本会话配额消耗 {cost.spent} / {cost.cap}
+                  本会话配额消耗 {cost.spent}
+                  {cost.cap > 0 ? ` / ${cost.cap}` : ''}
                   {cost.accountRemaining != null && ` · 账户剩余 ${cost.accountRemaining}`}
                 </span>
               )}

@@ -2,7 +2,21 @@ import 'dotenv/config'
 
 function num(name: string, fallback: number): number {
   const v = process.env[name]
-  return v ? Number(v) : fallback
+  if (!v) return fallback
+  const n = Number(v)
+  if (Number.isNaN(n)) {
+    // NaN 参与比较恒为 false，会让配额上限等阈值静默失效，必须回退默认值
+    console.warn(`环境变量 ${name}="${v}" 不是合法数字，已回退默认值 ${fallback}`)
+    return fallback
+  }
+  return n
+}
+
+function list(name: string): string[] {
+  return (process.env[name] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
 export const config = {
@@ -36,6 +50,8 @@ export const config = {
   taskPollTimeoutMs: num('ASSISTANT_TASK_POLL_TIMEOUT_MS', 300000),
   /** backend 单次 HTTP 请求超时（防止 backend 挂起拖死整轮对话） */
   backendRequestTimeoutMs: num('ASSISTANT_BACKEND_REQUEST_TIMEOUT_MS', 60000),
+  /** CORS 允许的前端 origin（逗号分隔）；不配置时放行所有 origin（仅限本地开发） */
+  allowedOrigins: list('ASSISTANT_ALLOWED_ORIGINS'),
 }
 
 export type Config = typeof config

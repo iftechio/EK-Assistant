@@ -131,7 +131,9 @@ export async function runAgentTurn(args: {
       emit({ type: 'done', sessionId: session.id })
 
       // 轮后异步压缩，不阻塞响应
-      maybeCompact(store, session.id, session.context_summary).catch(() => {})
+      maybeCompact(store, session.id, session.context_summary).catch((err) => {
+        console.error(`[compact] 会话 ${session.id} 上下文压缩失败:`, err)
+      })
       return
     } catch (err) {
       // 客户端已断开导致的中止：直接结束，不 failover 也不报错

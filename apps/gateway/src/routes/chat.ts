@@ -25,6 +25,9 @@ export function registerChatRoutes(app: FastifyInstance, store: SessionStore) {
     if (!message || typeof message !== 'string') {
       return reply.status(400).send({ error: 'message 必填' })
     }
+    if (message.length > 20000) {
+      return reply.status(400).send({ error: '消息过长（上限 20000 字符），请拆分后发送' })
+    }
 
     const session = sessionId
       ? await store.getSession(sessionId, user.userId)
