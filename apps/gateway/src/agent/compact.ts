@@ -13,6 +13,17 @@ export function estimateTokens(value: unknown): number {
 const KEEP_RECENT = 8
 
 /**
+ * 计算压缩切分点：保留最近 keepRecent 条，但切分点不能落在 assistant(tool-calls)
+ * 与 tool(result) 之间——保留窗口若以孤儿 tool 消息开头，之后每轮模型调用都会被拒。
+ * 向后推进切分点直到保留窗口的第一条不是 tool 消息（宁可多压一点）。
+ */
+export function compactCutIndex(rows: { role: string }[], keepRecent = KEEP_RECENT): number {
+  let cut = Math.max(0, rows.length - keepRecent)
+  while (cut < rows.length && rows[cut].role === 'tool') cut++
+  return cut
+}
+
+/**
  * 上下文压缩：长会话逼近 token 预算时，把较早的消息压缩成一段摘要
  * 存到会话上（参考 claude-code services/compact 思路的精简版）。
  * @returns 是否发生了压缩
@@ -26,12 +37,7 @@ export async function maybeCompact(
   const total = rows.reduce((sum, r) => sum + estimateTokens(r.content), 0)
   if (total <= config.contextTokenBudget) return false
 
-  // 切分点不能落在 assistant(tool-calls) 与 tool(result) 之间：保留窗口若以孤儿
-  // tool 消息开头，之后每轮模型调用都会被拒（tool message without preceding tool call）。
-  // 向后推进切分点直到保留窗口的第一条不是 tool 消息（宁可多压一点）。
-  let cut = Math.max(0, rows.length - KEEP_RECENT)
-  while (cut < rows.length && rows[cut].role === 'tool') cut++
-  const toCompact = rows.slice(0, cut)
+  const toCompact = rows.slice(0, compactCutIndex(rows))
   if (toCompact.length === 0) return false
 
   const transcript = toCompact
