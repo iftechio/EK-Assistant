@@ -1,5 +1,5 @@
 import { Component, useState, type ReactNode } from 'react'
-import { downloadCommentsExcel } from '../api'
+import { downloadBlob, downloadCommentsExcel } from '../api'
 import { safeHref } from '../safeHref'
 import type { ToolDisplay } from '../types'
 
@@ -1089,11 +1089,7 @@ function downloadKolsCsv(kols: any[]) {
   ])
   const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\n')
   const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `kols-${Date.now()}.csv`
-  a.click()
-  URL.revokeObjectURL(a.href)
+  downloadBlob(blob, `kols-${Date.now()}.csv`)
 }
 
 function csvCell(value: unknown): string {

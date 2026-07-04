@@ -94,10 +94,15 @@ export async function downloadCommentsExcel(body: { taskId: string }): Promise<v
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error('导出失败')
-  const blob = await res.blob()
+  downloadBlob(await res.blob(), `comments-${Date.now()}.xlsx`)
+}
+
+/** blob 下载：revoke 延迟执行，同步撤销可能让部分浏览器在下载启动前失效 URL */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `comments-${Date.now()}.xlsx`
+  a.href = url
+  a.download = filename
   a.click()
-  URL.revokeObjectURL(a.href)
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }

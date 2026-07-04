@@ -54,6 +54,8 @@ export function inferPlatform(url: string): (typeof COMMENT_PLATFORMS)[number] |
  */
 const commentCache = new Map<string, { at: number; data: FetchCommentsResponse }>()
 const CACHE_TTL_MS = 60 * 60 * 1000
+/** 缓存容量上限：只 export 不 analyze 的会话不会触发惰性清理，防止长期运行缓慢泄漏 */
+const CACHE_MAX_ENTRIES = 200
 
 function cacheKey(sessionId: string, url: string) {
   return `${sessionId}:${url}`
@@ -126,6 +128,11 @@ export const exportComments = defineTool({
       url: input.url,
       total: task.result.total,
       comments: task.result.comments,
+    }
+    if (commentCache.size >= CACHE_MAX_ENTRIES) {
+      // 超容时淘汰最旧条目（Map 迭代顺序即插入顺序）
+      const oldest = commentCache.keys().next().value
+      if (oldest !== undefined) commentCache.delete(oldest)
     }
     commentCache.set(cacheKey(ctx.sessionId, input.url), { at: Date.now(), data: result })
     return {

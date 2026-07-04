@@ -25,6 +25,8 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
 
   useEffect(() => {
     if (!historyOpen) return
+    // 打开面板时重新拉取：新会话创建瞬间标题多半还没生成，不刷新会长期显示"未命名会话"
+    refresh()
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
@@ -41,7 +43,7 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [historyOpen])
+  }, [historyOpen, refresh])
 
   return (
     <div className="workspace">

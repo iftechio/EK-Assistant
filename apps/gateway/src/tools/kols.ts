@@ -99,15 +99,25 @@ export const saveKolsToProject = defineTool({
         const projectId = must(input.projectId, 'projectId')
         const kolIds = must(input.kolIds, 'kolIds')
         const attitude = input.action === 'rate_kols' ? must(input.attitude, 'attitude') : (input.attitude ?? 'LIKE')
-        const results: { kolId: string; ok: boolean; error?: string }[] = []
-        for (const kolId of kolIds) {
-          try {
-            await ctx.backend.post('/api/projectkol/rate', { projectId, kolId, attitude })
-            results.push({ kolId, ok: true })
-          } catch (err) {
-            results.push({ kolId, ok: false, error: err instanceof Error ? err.message : String(err) })
-          }
-        }
+        // 小并发（5）：100 个逐个串行要 10-30 秒，用户对话期间长时间无反馈
+        const CONCURRENCY = 5
+        const results: { kolId: string; ok: boolean; error?: string }[] = new Array(kolIds.length)
+        let cursor = 0
+        await Promise.all(
+          Array.from({ length: Math.min(CONCURRENCY, kolIds.length) }, async () => {
+            for (;;) {
+              const i = cursor++
+              if (i >= kolIds.length) return
+              const kolId = kolIds[i]
+              try {
+                await ctx.backend.post('/api/projectkol/rate', { projectId, kolId, attitude })
+                results[i] = { kolId, ok: true }
+              } catch (err) {
+                results[i] = { kolId, ok: false, error: err instanceof Error ? err.message : String(err) }
+              }
+            }
+          }),
+        )
         const okCount = results.filter((r) => r.ok).length
         return {
           forModel: {

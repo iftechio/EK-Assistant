@@ -32,7 +32,7 @@ export const compareCampaignPerformance = defineTool({
     }
 
     const target = input.postLink
-      ? pubs.find((p) => p.postLink === input.postLink)
+      ? pubs.find((p) => normalizeLink(p.postLink) === normalizeLink(input.postLink))
       : [...pubs].sort((a, b) => String(b.publishDate ?? '').localeCompare(String(a.publishDate ?? '')))[0]
     if (!target) {
       return { forModel: { error: `在 ${input.bloggerName} 的追踪数据里没找到该链接，可先 track_publications 添加` } }
@@ -74,3 +74,15 @@ export const compareCampaignPerformance = defineTool({
     }
   },
 })
+
+/** 链接规范化后再比较：尾斜杠、query、协议差异都不应导致"没找到该链接" */
+function normalizeLink(link: unknown): string {
+  const s = String(link ?? '').trim()
+  if (!s) return ''
+  try {
+    const u = new URL(s)
+    return `${u.hostname.toLowerCase().replace(/^www\./, '')}${u.pathname.replace(/\/+$/, '')}`
+  } catch {
+    return s.replace(/\/+$/, '').toLowerCase()
+  }
+}
