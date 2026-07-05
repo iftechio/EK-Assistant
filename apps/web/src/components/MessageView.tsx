@@ -107,12 +107,13 @@ function StepsPanel({
   active: boolean
   elapsedSeconds: number
 }) {
-  const [expanded, setExpanded] = useState(active)
+  const hasDisplay = message.activities.some((a) => a.display)
+  const [expanded, setExpanded] = useState(active || hasDisplay)
   const wasActive = useRef(active)
   useEffect(() => {
-    if (wasActive.current && !active) setExpanded(false)
+    if (wasActive.current && !active) setExpanded(message.activities.some((a) => a.display))
     wasActive.current = active
-  }, [active])
+  }, [active, message.activities])
 
   const seconds = active ? elapsedSeconds : message.processedSeconds
   const stepCount = message.activities.length

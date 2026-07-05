@@ -167,51 +167,118 @@ export const searchKols = defineTool({
       '/api/search/v2/web-search',
       buildSearchBody(input, projectId),
     )
-    const polled = await pollTask(ctx.backend, task)
+    let polled: PollStatus | null = null
+    let pollError: unknown
+    try {
+      polled = await pollTask(ctx.backend, task)
+    } catch (error) {
+      pollError = error
+    }
+    if (pollError) {
+      const partial = await readSearchResults(ctx.backend, {
+        projectId,
+        platform: input.platform,
+        maxResults,
+      })
+      if (partial.kols.length) {
+        return buildSearchResult({
+          projectId,
+          taskId: task.id,
+          platform: input.platform,
+          total: partial.total,
+          maxResults,
+          kols: partial.kols,
+          note:
+            '搜索任务等待超时，但已取回当前可用的部分结果。可让用户稍后用同一项目继续翻页，或缩小国家/数量重试。',
+        })
+      }
+      return {
+        forModel: {
+          projectId,
+          taskId: task.id,
+          error: `搜索仍在后台处理但等待超时：${pollError instanceof Error ? pollError.message : String(pollError)}`,
+          suggestion: '建议稍后查询该项目结果，或按国家拆分、降低数量后重试。',
+        },
+      }
+    }
+    if (!polled) {
+      return { forModel: { projectId, taskId: task.id, error: '搜索任务没有返回状态，请稍后重试' } }
+    }
     if (polled.status === 'FAILED') {
       return { forModel: { projectId, taskId: task.id, error: `搜索失败：${polled.message || '无更多结果'}` } }
     }
-    const firstPage = await ctx.backend.get<{ data: any[]; total: number }>(
-      '/api/search/web-search',
-      { projectId, platform: input.platform, page: 1, pageSize: Math.min(maxResults, 100) },
-    )
-    const kols = [...(firstPage.data ?? [])]
-    const pageSize = 100
-    const maxPages = Math.ceil(maxResults / pageSize)
-    for (let page = 2; page <= maxPages && kols.length < maxResults; page++) {
-      const next = await ctx.backend.get<{ data: any[]; total: number }>('/api/search/web-search', {
-        projectId,
-        platform: input.platform,
-        page,
-        pageSize,
-      })
-      const rows = next.data ?? []
-      if (!rows.length) break
-      kols.push(...rows)
-    }
-    const limitedKols = kols.slice(0, maxResults)
-    return {
-      forModel: {
-        projectId,
-        taskId: task.id,
-        total: firstPage.total,
-        returned: limitedKols.length,
-        kols: limitedKols.slice(0, 20).map(compactKol),
-        note: limitedKols.length > 20 ? '仅展示前20个给模型，完整列表见界面卡片，可下载 CSV' : undefined,
-      },
-      display: {
-        kind: 'kol-list',
-        data: {
-          projectId,
-          platform: input.platform,
-          total: firstPage.total,
-          returned: limitedKols.length,
-          kols: limitedKols,
-        },
-      },
-    }
+    const result = await readSearchResults(ctx.backend, { projectId, platform: input.platform, maxResults })
+    return buildSearchResult({
+      projectId,
+      taskId: task.id,
+      platform: input.platform,
+      total: result.total,
+      maxResults,
+      kols: result.kols,
+    })
   },
 })
+
+async function readSearchResults(
+  backend: BackendClient,
+  args: { projectId: string; platform: SearchKolsInput['platform']; maxResults: number },
+) {
+  const firstPage = await backend.get<{ data: any[]; total: number }>('/api/search/web-search', {
+    projectId: args.projectId,
+    platform: args.platform,
+    page: 1,
+    pageSize: Math.min(args.maxResults, 100),
+  })
+  const kols = [...(firstPage.data ?? [])]
+  const pageSize = 100
+  const maxPages = Math.ceil(args.maxResults / pageSize)
+  for (let page = 2; page <= maxPages && kols.length < args.maxResults; page++) {
+    const next = await backend.get<{ data: any[]; total: number }>('/api/search/web-search', {
+      projectId: args.projectId,
+      platform: args.platform,
+      page,
+      pageSize,
+    })
+    const rows = next.data ?? []
+    if (!rows.length) break
+    kols.push(...rows)
+  }
+  return { total: firstPage.total, kols: kols.slice(0, args.maxResults) }
+}
+
+function buildSearchResult(args: {
+  projectId: string
+  taskId: string
+  platform: SearchKolsInput['platform']
+  total: number
+  maxResults: number
+  kols: any[]
+  note?: string
+}) {
+  const note =
+    args.note ??
+    (args.kols.length > 20 ? '仅展示前20个给模型，完整列表见界面卡片，可下载 CSV' : undefined)
+  return {
+    forModel: {
+      projectId: args.projectId,
+      taskId: args.taskId,
+      total: args.total,
+      returned: args.kols.length,
+      kols: args.kols.slice(0, 20).map(compactKol),
+      note,
+    },
+    display: {
+      kind: 'kol-list',
+      data: {
+        projectId: args.projectId,
+        platform: args.platform,
+        total: args.total,
+        returned: args.kols.length,
+        kols: args.kols,
+      },
+    },
+  }
+}
 
 export const findSimilarKols = defineTool({
   name: 'find_similar_kols',

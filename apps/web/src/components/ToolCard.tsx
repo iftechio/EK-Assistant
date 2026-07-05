@@ -2,6 +2,7 @@ import { Component, useState, type ReactNode } from 'react'
 import { downloadBlob, downloadCommentsExcel } from '../api'
 import { safeHref } from '../safeHref'
 import type { ToolDisplay } from '../types'
+import MarkdownText from './MarkdownText'
 
 /**
  * 卡片渲染兜底：任何一张卡片因脏数据抛错都不能拖垮整个对话界面
@@ -37,7 +38,7 @@ function ToolCardInner({ display }: { display: ToolDisplay }) {
     case 'outreach-stat':
       return <StatCard title="今日发送统计" data={display.data} />
     case 'tracking-summary':
-      return <StatCard title="投放数据汇总" data={display.data} />
+      return <TrackingSummaryCard data={display.data} />
     case 'performance-comparison':
       return <ComparisonCard data={display.data} />
     case 'comment-analysis':
@@ -255,10 +256,11 @@ function KolItem({ kol: k, platform }: { kol: any; platform?: string }) {
 function CommentsCard({ data }: { data: any }) {
   const [busy, setBusy] = useState(false)
   const comments: any[] = data.comments ?? []
+  const hasComments = comments.length > 0
   return (
     <div className="card">
       <div className="card-title">
-        评论（{data.total}）
+        评论（{data.total ?? comments.length}）
         <button
           className="ghost"
           disabled={busy || !data.taskId}
@@ -277,6 +279,11 @@ function CommentsCard({ data }: { data: any }) {
         </button>
       </div>
       <div className="comment-list">
+        {!hasComments && (
+          <div className="muted">
+            本次任务没有抓取到评论。可以先下载 Excel 留档；若要继续分析，请换真实公开视频链接或确认评论区公开。
+          </div>
+        )}
         {comments.slice(0, 100).map((c, i) => (
           <div key={i} className="comment-row">
             <span className="muted">{c.author}</span> {c.text}
@@ -297,6 +304,37 @@ function StatCard({ title, data }: { title: string; data: any }) {
     <div className="card">
       <div className="card-title">{title}</div>
       <StatGrid items={items} />
+    </div>
+  )
+}
+
+function TrackingSummaryCard({ data }: { data: any }) {
+  const totalVideos = data?.totalVideos ?? 0
+  const totalViews = data?.totalViews ?? 0
+  const cost = data?.cost ?? 0
+  const cpm = data?.cpm ?? 0
+  const videosWithCost = data?.videosWithCost ?? 0
+  const viewsWithCost = data?.viewsWithCost ?? 0
+  const hasCost = videosWithCost > 0 || cost > 0
+  return (
+    <div className="card">
+      <div className="card-title">投放数据汇总</div>
+      <StatGrid
+        items={[
+          { key: 'videos', value: fmt(totalVideos), label: '追踪视频' },
+          { key: 'views', value: fmt(totalViews), label: '总播放量' },
+          { key: 'cost', value: hasCost ? fmtMoney(cost) : '-', label: '已录入成本' },
+          { key: 'cpm', value: hasCost ? fmtMoney(cpm) : '-', label: 'CPM' },
+        ]}
+      />
+      {!hasCost && totalVideos > 0 && (
+        <div className="muted">当前追踪内容还没有录入成本，因此暂时无法计算真实 CPM。</div>
+      )}
+      {hasCost && (
+        <div className="muted">
+          已录入成本的视频 {fmt(videosWithCost)} 条，覆盖播放量 {fmt(viewsWithCost)}。
+        </div>
+      )}
     </div>
   )
 }
@@ -328,7 +366,7 @@ function CommentAnalysisCard({ data }: { data: any }) {
     return (
       <div className="card">
         <div className="card-title">评论反馈分析（{data.analyzedComments} 条）</div>
-        <pre className="prewrap">{data.analysis}</pre>
+        <MarkdownText text={data.analysis || ''} />
       </div>
     )
   }
@@ -348,12 +386,23 @@ function CommentAnalysisCard({ data }: { data: any }) {
       {data.summary && <p className="analysis-summary">{data.summary}</p>}
       <FeedbackSection title="👍 正面反馈" items={data.positives} />
       <FeedbackSection title="👎 负面反馈" items={data.negatives} />
+      <FeedbackSection title="购买意向" items={data.purchaseIntent} />
       {data.questions?.length > 0 && (
         <div className="analysis-section">
           <div className="analysis-section-title">❓ 高频问题</div>
           <ul className="analysis-list">
             {data.questions.map((q: string, i: number) => (
               <li key={i}>{q}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.recommendedActions?.length > 0 && (
+        <div className="analysis-section">
+          <div className="analysis-section-title">下一步建议</div>
+          <ul className="analysis-list">
+            {data.recommendedActions.map((action: string, i: number) => (
+              <li key={i}>{action}</li>
             ))}
           </ul>
         </div>
@@ -873,6 +922,11 @@ function fmt(n: unknown): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return String(n)
+}
+
+function fmtMoney(n: unknown): string {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '-'
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 }
 
 function getName(k: any): string {

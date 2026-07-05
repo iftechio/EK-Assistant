@@ -38,6 +38,7 @@ describe('analyzeCommentsFeedback', () => {
       analyzedComments: 0,
       summary: '没有评论可分析',
       sentiment: { positivePct: 0, negativePct: 0, neutralPct: 100 },
+      recommendedActions: ['换真实公开视频链接重试', '确认视频评论区公开', '如平台限制抓取，可上传评论 Excel/CSV 后再分析'],
     })
     expect(result.display).toMatchObject({
       kind: 'comment-analysis',

@@ -80,7 +80,7 @@ export function getCachedComments(sessionId: string, url?: string): FetchComment
 export const exportComments = defineTool({
   name: 'export_comments',
   description:
-    '拉取某条视频的评论（支持 TIKTOK/YOUTUBE），供用户下载 Excel 或后续分析。用户说"最多/拉取 N 条评论"时必须把 N 传给 maxCount，不要使用默认值。消耗配额（每 100 条评论 1 个任务点，默认 200 条 = 2 点，任务失败自动退费）。拉取后可直接调用 analyze_comments_feedback 做反馈分析（不重复扣费）。',
+    '拉取某条视频的评论（支持 TIKTOK/YOUTUBE），供用户下载 Excel 或后续分析。用户说"最多/拉取 N 条评论"时必须把 N 传给 maxCount，不要使用默认值。消耗配额（每 100 条评论 1 个任务点，默认 200 条 = 2 点，任务失败自动退费）。拉取后可直接调用 analyze_comments_feedback 做反馈分析（不重复扣费）。如果抓取结果为 0，也要告诉用户界面卡片仍可下载空 Excel，并建议换真实公开视频链接或上传评论表作为后续兜底。',
   permission: 'quota',
   inputSchema: z.object({
     platform: z.enum(COMMENT_PLATFORMS).optional().describe('平台；不传则根据链接自动识别'),
@@ -141,7 +141,11 @@ export const exportComments = defineTool({
         total: result.total,
         fetched: result.comments.length,
         sample: result.comments.slice(0, 10).map((c) => truncate(c.text, 100)),
-        note: '完整评论已缓存，可调用 analyze_comments_feedback 做反馈分析；用户可在界面卡片下载 Excel',
+        downloadAvailable: true,
+        note:
+          result.comments.length > 0
+            ? '完整评论已缓存，可调用 analyze_comments_feedback 做反馈分析；用户可在界面卡片下载 Excel'
+            : '未抓取到评论。界面卡片仍可下载本次任务的空 Excel；请建议用户换真实公开视频链接、确认评论公开，或后续上传评论表做分析。',
       },
       display: {
         kind: 'comments',
@@ -161,7 +165,7 @@ export const exportComments = defineTool({
 export const analyzeCommentsFeedback = defineTool({
   name: 'analyze_comments_feedback',
   description:
-    '对已拉取的视频评论做用户反馈分析：正面反馈、负面反馈、高频问题、总体情感倾向。需要先用 export_comments 拉取评论（本工具复用缓存，不消耗配额）。',
+    '对已拉取的视频评论做用户反馈分析：正面反馈、负面反馈、高频问题、购买意向、可执行建议、总体情感倾向。需要先用 export_comments 拉取评论（本工具复用缓存，不消耗配额）。',
   permission: 'auto',
   inputSchema: z.object({
     url: z.string().optional().describe('视频链接；不传则分析本会话最近一次拉取的评论'),
@@ -186,6 +190,8 @@ export const analyzeCommentsFeedback = defineTool({
           positives: [],
           negatives: [],
           questions: [],
+          purchaseIntent: [],
+          recommendedActions: ['换真实公开视频链接重试', '确认视频评论区公开', '如平台限制抓取，可上传评论 Excel/CSV 后再分析'],
         },
         display: {
           kind: 'comment-analysis',
@@ -197,6 +203,8 @@ export const analyzeCommentsFeedback = defineTool({
             positives: [],
             negatives: [],
             questions: [],
+            purchaseIntent: [],
+            recommendedActions: ['换真实公开视频链接重试', '确认视频评论区公开', '如平台限制抓取，可上传评论 Excel/CSV 后再分析'],
           },
         },
       }
@@ -214,7 +222,7 @@ export const analyzeCommentsFeedback = defineTool({
     const model = getModelPool()[0]
     if (!model) throw new Error('未配置任何模型 API Key，无法执行评论分析')
     const system =
-      '你是社媒评论分析师。基于给定的视频评论输出反馈摘要：正面反馈要点（附代表性原句）、负面反馈要点（附代表性原句）、高频问题/疑问、总体情感倾向占比估计。只依据给定评论，不要编造。'
+      '你是社媒投放评论分析师。基于给定的视频评论输出反馈摘要：正面反馈要点（附代表性原句）、负面反馈要点（附代表性原句）、高频问题/疑问、购买意向线索、品牌下一步动作建议、总体情感倾向占比估计。只依据给定评论，不要编造。'
     const prompt = `${input.focus ? `分析侧重点：${input.focus}\n\n` : ''}视频（${cached.platform}）：${cached.url}\n共 ${cached.comments.length} 条评论（按点赞数附权重）：\n${lines.join('\n')}`
 
     // 优先结构化输出（前端分区渲染）；模型不支持/解析失败时回退纯文本
@@ -233,6 +241,8 @@ export const analyzeCommentsFeedback = defineTool({
           positives: object.positives.map((p) => p.point),
           negatives: object.negatives.map((p) => p.point),
           questions: object.questions,
+          purchaseIntent: object.purchaseIntent.map((p) => p.point),
+          recommendedActions: object.recommendedActions,
         },
         display: {
           kind: 'comment-analysis',
@@ -259,4 +269,11 @@ const FeedbackAnalysisSchema = z.object({
   positives: z.array(z.object({ point: z.string(), quotes: z.array(z.string()).max(3) })).describe('正面反馈要点，quotes 为代表性评论原句'),
   negatives: z.array(z.object({ point: z.string(), quotes: z.array(z.string()).max(3) })),
   questions: z.array(z.string()).describe('评论区高频问题/疑问'),
+  purchaseIntent: z
+    .array(z.object({ point: z.string(), quotes: z.array(z.string()).max(3) }))
+    .describe('购买意向或转化线索，例如询价、购买链接、发货地区、优惠、库存、使用门槛等'),
+  recommendedActions: z
+    .array(z.string())
+    .max(6)
+    .describe('品牌方下一步动作建议，例如置顶回复、补 FAQ、优化落地页、继续加投或暂停复盘'),
 })
