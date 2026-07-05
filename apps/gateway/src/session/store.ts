@@ -200,6 +200,14 @@ export class SessionStore {
     return id
   }
 
+  /** microcompact：原地替换消息 content（把旧 tool 结果清成占位标记，display 不动） */
+  async updateMessageContent(id: string, content: unknown): Promise<void> {
+    await this.pool.query(`UPDATE assistant_messages SET content = $2 WHERE id = $1`, [
+      id,
+      JSON.stringify(content),
+    ])
+  }
+
   /** 把工具结果卡片补挂到已落库的消息上（增量落库时最后一条消息先入库、display 后确定） */
   async updateMessageDisplay(id: string, display: ToolDisplay[]): Promise<void> {
     await this.pool.query(`UPDATE assistant_messages SET display = $2 WHERE id = $1`, [

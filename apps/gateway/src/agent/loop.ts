@@ -1,15 +1,17 @@
-import { streamText, stepCountIs, tool as aiTool, type ModelMessage } from 'ai'
+import { streamText, stepCountIs, tool as aiTool, jsonSchema, zodSchema, type ModelMessage } from 'ai'
 import { config } from '../config.js'
 import { getModelPool } from '../ai/models.js'
 import { BackendClient } from '../backend/client.js'
 import { CostMeter } from '../cost/meter.js'
 import { executeWithGate } from '../permissions/gate.js'
 import { getTools } from '../tools/registry.js'
+import { formatValidationError } from '../tools/validation.js'
 import type { SessionStore, SessionRow } from '../session/store.js'
 import type { AuthUser } from '../auth.js'
 import type { AgentEvent, ToolContext, ToolDisplay } from '../tools/types.js'
 import { buildSystemPrompt } from './systemPrompt.js'
 import { maybeCompact } from './compact.js'
+import { repairToolPairing } from './history.js'
 
 /**
  * Agent Loop：组装 system prompt → streamText 多步工具循环 → 事件流回前端 → 落库。
@@ -69,10 +71,17 @@ export async function runAgentTurn(args: {
       t.name,
       aiTool({
         description: t.description,
-        inputSchema: t.inputSchema,
-        execute: async (input: unknown) => {
+        // SDK 层只透传不校验（provider 仍收到完整 JSON Schema）：SDK 默认对非法参数
+        // 回喂的是冗长的英文 zod 原始错误，模型难以照改；校验移到下面自己做，
+        // 失败时回喂祈使句格式的自解释错误，模型静默修正后重试
+        inputSchema: jsonSchema<Record<string, unknown>>(zodSchema(t.inputSchema).jsonSchema),
+        execute: async (rawInput: unknown) => {
+          const parsed = t.inputSchema.safeParse(rawInput)
+          if (!parsed.success) {
+            return { error: formatValidationError(t.name, parsed.error) }
+          }
           try {
-            return await executeWithGate(t, input, ctx, store)
+            return await executeWithGate(t, parsed.data, ctx, store)
           } catch (err) {
             // 工具失败喂回模型，让它向用户解释/换路子，而不是整轮崩掉
             // 同时补发 tool-result，否则前端工具卡片会永远停在"正在执行"
@@ -84,18 +93,19 @@ export async function runAgentTurn(args: {
     ]),
   )
 
-  let system = buildSystemPrompt({
-    userEmail: user.email,
-    memory,
-    quotaSpent: costMeter.spentSoFar,
-    quotaCap: costMeter.cap,
-  })
+  let system = buildSystemPrompt({ userEmail: user.email, memory })
   if (session.context_summary) {
-    system += `\n\n[早前对话摘要]\n${session.context_summary}`
+    system += `\n\n[早前对话摘要]\n${session.context_summary}\n（以上是更早对话的压缩摘要。基于它直接继续当前任务；不要向用户复述摘要内容，也不要重新确认摘要中已确认过的事项。）`
   }
 
   // history 已包含开头落库的本轮用户消息，不能再拼一次，否则模型会收到重复的 user 消息
   const messages: ModelMessage[] = [...history]
+  // 每轮变化的配额数字不进 system prompt（保持前缀逐字稳定以命中 provider 隐式缓存），
+  // 以状态注入的形式挂在消息末尾，不落库
+  messages.push({
+    role: 'user',
+    content: `[会话状态注入] 本会话已消耗 backend 配额 ${costMeter.spentSoFar}/${costMeter.cap}。这是界面自动附带的状态信息，不是用户发言，无需回应。`,
+  })
 
   const pool = getModelPool()
   let lastError: unknown
@@ -105,6 +115,8 @@ export async function runAgentTurn(args: {
   // 不会因为看不到已做过的搜索而重做一次、重扣一次配额。
   let persistedCount = 0
   let lastPersistedId: string | null = null
+  // 最后一步的真实 usage：input+output ≈ 下一轮的上下文规模，压缩触发用它替代 chars/4 估算
+  let contextTokens: number | undefined
   for (const pooled of pool) {
     let textEmitted = false
     try {
@@ -116,6 +128,11 @@ export async function runAgentTurn(args: {
         stopWhen: stepCountIs(config.maxSteps),
         abortSignal: args.abortSignal,
         onStepFinish: async (step) => {
+          const usage = step.usage
+          if (usage) {
+            contextTokens =
+              usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)
+          }
           const fresh = step.response.messages.slice(persistedCount)
           persistedCount = step.response.messages.length
           for (const msg of fresh) {
@@ -147,7 +164,7 @@ export async function runAgentTurn(args: {
       emit({ type: 'done', sessionId: session.id })
 
       // 轮后异步压缩，不阻塞响应
-      maybeCompact(store, session.id, session.context_summary).catch((err) => {
+      maybeCompact(store, session.id, session.context_summary, contextTokens).catch((err) => {
         console.error(`[compact] 会话 ${session.id} 上下文压缩失败:`, err)
       })
       return
@@ -169,7 +186,7 @@ export async function runAgentTurn(args: {
     } as ModelMessage, displays)
     if (!anyTextEmitted) emit({ type: 'text-delta', delta: fallbackText })
     emit({ type: 'done', sessionId: session.id })
-    maybeCompact(store, session.id, session.context_summary).catch((err) => {
+    maybeCompact(store, session.id, session.context_summary, contextTokens).catch((err) => {
       console.error(`[compact] 会话 ${session.id} 上下文压缩失败:`, err)
     })
     return
@@ -182,5 +199,7 @@ export async function runAgentTurn(args: {
 
 async function loadHistory(store: SessionStore, sessionId: string): Promise<ModelMessage[]> {
   const rows = await store.listMessages(sessionId)
-  return rows.map((r) => ({ role: r.role, content: r.content }) as ModelMessage)
+  // 配对兜底：中途崩溃/部分落库留下的孤儿 tool-call/tool-result 会让该会话每轮
+  // 都被模型 API 拒绝（永久变砖），加载时修复
+  return repairToolPairing(rows.map((r) => ({ role: r.role, content: r.content }) as ModelMessage))
 }

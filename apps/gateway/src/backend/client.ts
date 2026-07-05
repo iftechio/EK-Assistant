@@ -28,6 +28,12 @@ export interface RequestOptions {
  * 用户的 Supabase JWT 原样转发，行为、配额、审计与用户手动操作一致。
  */
 export class BackendClient {
+  /**
+   * 任务轮询进度钩子：permission gate 在工具执行期间挂上，把每次轮询状态
+   * 转成 tool-progress 事件推给前端（长任务动辄几分钟，卡片不能一直静止）
+   */
+  onTaskPoll?: (info: { elapsedMs: number; polled: unknown }) => void
+
   constructor(
     private readonly jwt: string,
     private readonly baseUrl: string = config.backendBaseUrl,
@@ -106,10 +112,12 @@ export class BackendClient {
     const interval = args.intervalMs ?? config.taskPollIntervalMs
     const timeout = args.timeoutMs ?? config.taskPollTimeoutMs
     const created = await args.create(this)
-    const deadline = Date.now() + timeout
+    const started = Date.now()
+    const deadline = started + timeout
     for (;;) {
       const polled = await args.poll(this, created)
       if (args.isDone(polled)) return polled
+      this.onTaskPoll?.({ elapsedMs: Date.now() - started, polled })
       args.onProgress?.(polled)
       if (Date.now() > deadline) {
         throw new Error(`backend 任务轮询超时（${timeout}ms）`)

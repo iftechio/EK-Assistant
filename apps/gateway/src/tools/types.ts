@@ -16,7 +16,9 @@ export type AgentEvent =
   | { type: 'session'; sessionId: string }
   | { type: 'text-delta'; delta: string }
   | { type: 'tool-start'; toolName: string; input: unknown; estimatedQuota?: number }
+  | { type: 'tool-progress'; toolName: string; message: string; elapsedMs: number }
   | { type: 'tool-result'; toolName: string; display?: ToolDisplay }
+  | { type: 'queued' }
   | { type: 'confirmation-required'; action: PendingActionView }
   | { type: 'cost'; spent: number; cap: number; accountRemaining?: number }
   | { type: 'error'; message: string }

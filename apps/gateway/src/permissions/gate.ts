@@ -120,7 +120,55 @@ async function runTool(
   if (!opts.skipStartEvent) {
     ctx.emit({ type: 'tool-start', toolName: tool.name, input })
   }
-  const { forModel, display } = await tool.execute(input, ctx)
-  ctx.emit({ type: 'tool-result', toolName: tool.name, display })
-  return forModel
+  // 工具执行期挂上轮询进度钩子：所有走 callBackendTask 的长任务自动获得进度事件。
+  // 同一轮内工具串行执行，按工具设置/清除不会串台
+  ctx.backend.onTaskPoll = (info) =>
+    ctx.emit({
+      type: 'tool-progress',
+      toolName: tool.name,
+      message: describePolled(info.polled),
+      elapsedMs: info.elapsedMs,
+    })
+  try {
+    const { forModel, display } = await tool.execute(input, ctx)
+    ctx.emit({ type: 'tool-result', toolName: tool.name, display })
+    return normalizeEmptyResult(tool.name, forModel)
+  } finally {
+    ctx.backend.onTaskPoll = undefined
+  }
+}
+
+/** backend 各任务接口的轮询响应字段不统一，尽力提取人话进度 */
+function describePolled(polled: unknown): string {
+  if (polled && typeof polled === 'object') {
+    const p = polled as { message?: unknown; status?: unknown }
+    if (typeof p.message === 'string' && p.message) return p.message
+    if (typeof p.status === 'string' && p.status) {
+      const labels: Record<string, string> = {
+        PENDING: '任务排队中',
+        PROCESSING: '数据抓取中',
+        RESULT_READY: '结果整理中',
+      }
+      return labels[p.status] ?? `任务状态：${p.status}`
+    }
+  }
+  return '后台任务处理中'
+}
+
+/**
+ * 空结果占位：空数组/空对象直接回喂可能让模型行为异常
+ * （claude-code 有空 tool_result 误触 stop sequence 提前结束的事故记录），
+ * 统一替换为带下一步提示的说明对象
+ */
+function normalizeEmptyResult(toolName: string, forModel: unknown): unknown {
+  const empty =
+    forModel == null ||
+    forModel === '' ||
+    (Array.isArray(forModel) && forModel.length === 0) ||
+    (typeof forModel === 'object' && !Array.isArray(forModel) && Object.keys(forModel).length === 0)
+  if (!empty) return forModel
+  return {
+    status: 'empty',
+    note: `${toolName} 执行完成，但没有返回任何结果。可调整条件（放宽筛选/换来源）重试，并如实告知用户没有结果，不要编造。`,
+  }
 }

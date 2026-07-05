@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compactCutIndex } from './compact.js'
+import { CLEARED_MARKER, clearToolResults, compactCutIndex } from './compact.js'
 
 const u = { role: 'user' }
 const a = { role: 'assistant' }
@@ -30,5 +30,30 @@ describe('compactCutIndex', () => {
   it('切分点之后全是 tool 消息时压缩全部（保留窗口空但不残缺）', () => {
     const rows = [u, a, t, t]
     expect(compactCutIndex(rows, 2)).toBe(4)
+  })
+})
+
+describe('clearToolResults', () => {
+  const bigResult = {
+    type: 'tool-result',
+    toolCallId: 'call_1',
+    toolName: 'search_kols',
+    output: { type: 'json', value: { kols: Array(50).fill({ name: 'x' }) } },
+  }
+
+  it('把 tool-result 的 output 替换为占位标记，保留 toolCallId 配对', () => {
+    const cleared = clearToolResults([bigResult]) as any[]
+    expect(cleared).not.toBeNull()
+    expect(cleared[0].toolCallId).toBe('call_1')
+    expect(cleared[0].output).toEqual({ type: 'text', value: CLEARED_MARKER })
+  })
+
+  it('已清理过的消息返回 null（幂等，不重复写库）', () => {
+    const already = [{ ...bigResult, output: { type: 'text', value: CLEARED_MARKER } }]
+    expect(clearToolResults(already)).toBeNull()
+  })
+
+  it('非数组 content（纯文本消息）返回 null', () => {
+    expect(clearToolResults('你好')).toBeNull()
   })
 })

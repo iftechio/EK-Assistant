@@ -31,7 +31,7 @@ export function classifyKolUrls(urls: string[]): {
 export const extractKolEmails = defineTool({
   name: 'extract_kol_emails',
   description:
-    '批量提取达人邮箱：给一批达人主页链接（TikTok/YouTube/Instagram，自动按域名识别平台，最多 500 个），后台提取公开邮箱，返回可直接用于 send_outreach_batch 的收件人列表和 Excel 下载链接。消耗配额：每 5 个链接 1 分。',
+    '批量提取达人邮箱：给一批达人主页链接（TikTok/YouTube/Instagram，自动按域名识别平台，最多 500 个），后台提取公开邮箱，返回可直接用于 send_outreach_batch 的收件人列表和 Excel 下载链接。链接数组参数名是 urls。消耗配额：每 5 个链接 1 分。',
   permission: 'quota',
   inputSchema: z.object({
     urls: z.array(z.string()).min(1).max(500).describe('达人主页链接列表'),
