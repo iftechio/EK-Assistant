@@ -65,14 +65,17 @@ export default function Chat({
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busyCount, setBusyCount] = useState(0)
+  const busy = busyCount > 0
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [cost, setCost] = useState<{ spent: number; cap: number; accountRemaining?: number } | null>(null)
   const [showJump, setShowJump] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const currentSession = useRef<string | null>(sessionId)
   const justCreatedSession = useRef<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  /** 运行中的所有流（支持同会话排队：可以有多条在途） */
+  const controllersRef = useRef<Set<AbortController>>(new Set())
+  const nextTurnId = useRef(1)
   const turnStartedAt = useRef<number | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -86,7 +89,8 @@ export default function Chat({
     }
 
     // 切换会话（含新建空会话）时中止在途的旧流，避免旧会话的事件写入当前会话
-    abortRef.current?.abort()
+    controllersRef.current.forEach((c) => c.abort())
+    controllersRef.current.clear()
 
     if (!sessionId) {
       setMessages([])
@@ -145,7 +149,13 @@ export default function Chat({
     }
   }, [sessionId, resetToken])
 
-  useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(
+    () => () => {
+      controllersRef.current.forEach((c) => c.abort())
+      controllersRef.current.clear()
+    },
+    [],
+  )
 
   useEffect(() => {
     // 用户已明显上滑（距底 >240px，与"回到底部"按钮同一阈值）时不强行拽回，
@@ -175,7 +185,10 @@ export default function Chat({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }
 
-  const stop = () => abortRef.current?.abort()
+  const stop = () => {
+    controllersRef.current.forEach((c) => c.abort())
+    controllersRef.current.clear()
+  }
 
   /** 重发最后一条用户消息（出错后的重试入口） */
   const retryLast = () => {
@@ -186,32 +199,32 @@ export default function Chat({
 
   const send = async (overrideText?: string) => {
     const message = (overrideText ?? input).trim()
-    if (!message || busy) return
+    if (!message) return
+    // 首轮还没拿到 sessionId 时不能并发发送：第二条会误建一个新会话
+    if (busy && !currentSession.current) return
     if (overrideText == null) {
       setInput('')
       requestAnimationFrame(autosize)
     }
-    setBusy(true)
+    const turnId = nextTurnId.current++
+    const startedAt = Date.now()
+    setBusyCount((c) => c + 1)
     setElapsedSeconds(0)
-    turnStartedAt.current = Date.now()
+    turnStartedAt.current = startedAt
     setMessages((prev) => [
       ...prev,
-      { role: 'user', text: message, activities: [], confirmations: [] },
-      { role: 'assistant', text: '', activities: [], confirmations: [] },
+      { role: 'user', text: message, activities: [], confirmations: [], turnId },
+      { role: 'assistant', text: '', activities: [], confirmations: [], turnId },
     ])
 
-    abortRef.current?.abort()
     const controller = new AbortController()
-    abortRef.current = controller
+    controllersRef.current.add(controller)
 
+    // 并发排队时可能有多条在途流，按 turnId 定位本回合的 assistant 消息
     const updateLast = (fn: (m: ChatMessage) => ChatMessage) =>
-      setMessages((prev) => {
-        const last = prev[prev.length - 1]
-        if (!last) return prev
-        const next = [...prev]
-        next[next.length - 1] = fn(last)
-        return next
-      })
+      setMessages((prev) =>
+        prev.map((m) => (m.turnId === turnId && m.role === 'assistant' ? fn(m) : m)),
+      )
 
     const onEvent = (event: AgentEvent) => {
       // 流已被中止（切换了会话）：丢弃残余事件，避免写入其它会话
@@ -224,17 +237,36 @@ export default function Chat({
             onSessionCreated(event.sessionId)
           }
           break
+        case 'queued':
+          updateLast((m) => ({ ...m, queued: true }))
+          break
         case 'text-delta':
-          updateLast((m) => ({ ...m, text: m.text + event.delta }))
+          updateLast((m) => ({ ...m, queued: false, text: m.text + event.delta }))
           break
         case 'tool-start':
           updateLast((m) => ({
             ...m,
+            queued: false,
             activities: [
               ...m.activities,
               { toolName: event.toolName, status: 'running', estimatedQuota: event.estimatedQuota },
             ],
           }))
+          break
+        case 'tool-progress':
+          updateLast((m) => {
+            const activities = [...m.activities]
+            for (let i = activities.length - 1; i >= 0; i--) {
+              if (activities[i].toolName === event.toolName && activities[i].status === 'running') {
+                activities[i] = {
+                  ...activities[i],
+                  progress: { message: event.message, elapsedMs: event.elapsedMs },
+                }
+                break
+              }
+            }
+            return { ...m, activities }
+          })
           break
         case 'tool-result':
           updateLast((m) => {
@@ -289,14 +321,16 @@ export default function Chat({
         }
       }
     } finally {
+      controllersRef.current.delete(controller)
       if (!controller.signal.aborted) {
-        const processedSeconds = turnStartedAt.current
-          ? Math.max(1, Math.floor((Date.now() - turnStartedAt.current) / 1000))
-          : undefined
+        const processedSeconds = Math.max(1, Math.floor((Date.now() - startedAt) / 1000))
         updateLast((m) => ({ ...m, processedSeconds }))
       }
-      turnStartedAt.current = null
-      setBusy(false)
+      setBusyCount((c) => {
+        const next = c - 1
+        if (next === 0) turnStartedAt.current = null
+        return next
+      })
       // 新会话首轮结束后标题才生成，通知侧栏刷新
       onTurnDone?.()
     }
@@ -374,20 +408,27 @@ export default function Chat({
               )}
               {busy && <span className="busy-hint">思考中 · {elapsedSeconds}s</span>}
             </div>
-            {busy ? (
-              <button className="send-btn stop" onClick={stop} aria-label="停止生成" title="停止生成">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="7" y="7" width="10" height="10" rx="1.5" />
-                </svg>
-              </button>
-            ) : (
-              <button className="send-btn" onClick={() => send()} disabled={!input.trim()} aria-label="发送" title="发送">
+            <div className="composer-btns">
+              {busy && (
+                <button className="send-btn stop" onClick={stop} aria-label="停止生成" title="停止生成">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="7" y="7" width="10" height="10" rx="1.5" />
+                  </svg>
+                </button>
+              )}
+              <button
+                className="send-btn"
+                onClick={() => send()}
+                disabled={!input.trim() || (busy && !currentSession.current)}
+                aria-label={busy ? '发送（排队执行）' : '发送'}
+                title={busy ? '发送（排队执行）' : '发送'}
+              >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 19V5" />
                   <path d="m5 12 7-7 7 7" />
                 </svg>
               </button>
-            )}
+            </div>
           </div>
         </div>
       </div>

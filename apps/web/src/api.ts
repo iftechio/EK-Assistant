@@ -54,11 +54,12 @@ export async function streamChat(
 export async function confirmAction(
   actionId: string,
   approved: boolean,
+  reason?: string,
 ): Promise<{ status: string; result?: unknown; error?: string; quotaSpent?: number }> {
   const res = await fetch(`${GATEWAY_URL}/api/actions/${actionId}/confirm`, {
     method: 'POST',
     headers: await authHeaders(),
-    body: JSON.stringify({ approved }),
+    body: JSON.stringify({ approved, reason: reason || undefined }),
   })
   // 网关 502/超时返回 HTML 时 res.json() 会抛无意义的解析错误
   const text = await res.text()

@@ -15,7 +15,9 @@ export type AgentEvent =
   | { type: 'session'; sessionId: string }
   | { type: 'text-delta'; delta: string }
   | { type: 'tool-start'; toolName: string; input: unknown; estimatedQuota?: number }
+  | { type: 'tool-progress'; toolName: string; message: string; elapsedMs: number }
   | { type: 'tool-result'; toolName: string; display?: ToolDisplay }
+  | { type: 'queued' }
   | { type: 'confirmation-required'; action: PendingActionView }
   | { type: 'cost'; spent: number; cap: number; accountRemaining?: number }
   | { type: 'error'; message: string }
@@ -26,6 +28,8 @@ export interface ToolActivity {
   status: 'running' | 'done'
   estimatedQuota?: number
   display?: ToolDisplay
+  /** 长任务轮询进度（运行中实时更新） */
+  progress?: { message: string; elapsedMs: number }
 }
 
 export interface Confirmation {
@@ -41,6 +45,10 @@ export interface ChatMessage {
   confirmations: Confirmation[]
   error?: string
   processedSeconds?: number
+  /** 排队中：同会话上一条消息还没处理完 */
+  queued?: boolean
+  /** 本条消息所属的发送回合（并发流按它定位要更新的 assistant 消息） */
+  turnId?: number
 }
 
 export interface SessionSummary {

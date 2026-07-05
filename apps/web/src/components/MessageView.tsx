@@ -152,6 +152,11 @@ function StepsPanel({
               <span className="step-label">
                 {toolStatusText(a.toolName, a.status)}
                 {a.estimatedQuota ? <span className="quota-chip">预估 {a.estimatedQuota}</span> : null}
+                {a.status === 'running' && a.progress && (
+                  <span className="step-progress">
+                    {a.progress.message} · 已等待 {formatElapsed(a.progress.elapsedMs)}
+                  </span>
+                )}
               </span>
             </div>
             {a.display && (
@@ -168,7 +173,7 @@ function StepsPanel({
             <span className="step-icon">
               <span className="step-spinner" />
             </span>
-            <span className="step-label">思考中…</span>
+            <span className="step-label">{message.queued ? '排队中：等待上一条消息处理完成…' : '思考中…'}</span>
           </div>
         </div>
       )}
@@ -179,6 +184,11 @@ function StepsPanel({
 function toolStatusText(name: string, status: 'running' | 'done'): string {
   const action = toolAction(name)
   return status === 'running' ? `正在${action}` : `已返回：${action}`
+}
+
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  return s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`
 }
 
 function toolAction(name: string): string {
