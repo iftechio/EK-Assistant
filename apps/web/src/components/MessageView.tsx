@@ -9,13 +9,19 @@ export default function MessageView({
   active = false,
   elapsedSeconds = 0,
   onRetry,
+  dockedKinds = [],
 }: {
   message: ChatMessage
   active?: boolean
   elapsedSeconds?: number
   onRetry?: () => void
+  dockedKinds?: string[]
 }) {
   if (message.role === 'assistant') {
+    const hasStructuredDisplay = message.activities.some((a) =>
+      ['kol-list', 'search-intent'].includes(a.display?.kind ?? ''),
+    )
+    const showText = Boolean(message.text && !hasStructuredDisplay)
     return (
       <section className={`assistant-turn ${active ? 'active' : ''}`}>
         <div className="turn-gutter">
@@ -23,10 +29,10 @@ export default function MessageView({
         </div>
         <div className="turn-body">
           {(message.activities.length > 0 || active) && (
-            <StepsPanel message={message} active={active} elapsedSeconds={elapsedSeconds} />
+            <StepsPanel message={message} active={active} elapsedSeconds={elapsedSeconds} dockedKinds={dockedKinds} />
           )}
 
-          {message.text && (
+          {showText && (
             <div className={`assistant-prose ${active ? 'streaming' : ''}`}>
               <MarkdownText text={message.text} />
             </div>
@@ -47,7 +53,7 @@ export default function MessageView({
               )}
             </div>
           )}
-          {!active && message.text && <TurnActions text={message.text} />}
+          {!active && showText && <TurnActions text={message.text} />}
         </div>
       </section>
     )
@@ -102,10 +108,12 @@ function StepsPanel({
   message,
   active,
   elapsedSeconds,
+  dockedKinds,
 }: {
   message: ChatMessage
   active: boolean
   elapsedSeconds: number
+  dockedKinds: string[]
 }) {
   const hasDisplay = message.activities.some((a) => a.display)
   const [expanded, setExpanded] = useState(active || hasDisplay)
@@ -160,7 +168,7 @@ function StepsPanel({
                 )}
               </span>
             </div>
-            {a.display && (
+            {a.display && !dockedKinds.includes(a.display.kind) && (
               <div className="step-card">
                 <ToolCard display={a.display} />
               </div>

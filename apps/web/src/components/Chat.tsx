@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { getSessionMessages, streamChat } from '../api'
-import type { AgentEvent, ChatMessage } from '../types'
+import type { AgentEvent, ChatMessage, ToolDisplay } from '../types'
 import MessageView from './MessageView'
+import ToolCard from './ToolCard'
 
 const STARTER_CARDS = [
   {
@@ -79,6 +80,7 @@ export default function Chat({
   const turnStartedAt = useRef<number | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const latestKolDisplay = findLatestDisplay(messages, 'kol-list')
 
   useEffect(() => {
     currentSession.current = sessionId
@@ -336,120 +338,139 @@ export default function Chat({
     }
   }
 
+  useEffect(() => {
+    const onIntentSearch = (event: Event) => {
+      const message = event instanceof CustomEvent ? event.detail : ''
+      if (typeof message === 'string' && message.trim()) {
+        void send(message)
+      }
+    }
+    window.addEventListener('ek-assistant:intent-search', onIntentSearch)
+    return () => window.removeEventListener('ek-assistant:intent-search', onIntentSearch)
+  })
+
   return (
-    <main className={`chat ${messages.length === 0 ? 'empty' : ''}`}>
-      <div
-        className="message-list"
-        ref={listRef}
-        onScroll={() => {
-          const el = listRef.current
-          if (!el) return
-          setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 240)
-        }}
-      >
-        {messages.length === 0 && (
-          <div className="hero">
-            <img className="hero-logo" src="/ek-icon.png" alt="" />
-            <h1 className="hero-title">达人营销工作台</h1>
-            <p className="hero-greeting">把搜索、收藏、邮件外联和投放追踪串成一条工作流。</p>
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <MessageView
-            key={i}
-            message={m}
-            active={busy && i === messages.length - 1 && m.role === 'assistant'}
-            elapsedSeconds={elapsedSeconds}
-            onRetry={!busy && i === messages.length - 1 ? retryLast : undefined}
-          />
-        ))}
-        <div ref={bottomRef} />
-      </div>
-      {showJump && (
-        <button
-          className="jump-bottom"
-          aria-label="回到底部"
-          onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+    <main className={`chat ${messages.length === 0 ? 'empty' : ''} ${latestKolDisplay ? 'has-results' : ''}`}>
+      <section className="chat-thread">
+        <div
+          className="message-list"
+          ref={listRef}
+          onScroll={() => {
+            const el = listRef.current
+            if (!el) return
+            setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 240)
+          }}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14" />
-            <path d="m19 12-7 7-7-7" />
-          </svg>
-        </button>
-      )}
-      <div className="composer-wrap">
-        <div className="composer-pill">
-          <textarea
-            ref={inputRef}
-            value={input}
-            placeholder="描述你的需求"
-            onChange={(e) => {
-              setInput(e.target.value)
-              autosize()
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                if (e.nativeEvent.isComposing) return
-                e.preventDefault()
-                send()
-              }
-            }}
-            rows={1}
-          />
-          <div className="composer-bar">
-            <div className="composer-meta">
-              {cost && (cost.cap > 0 || cost.spent > 0) && (
-                <span className="quota-group" aria-label="配额信息">
-                  <span className="quota-pill">本会话已用 {cost.spent}</span>
-                  {cost.accountRemaining != null && (
-                    <span className="quota-pill">账户剩余 {cost.accountRemaining}</span>
-                  )}
-                </span>
-              )}
-              {busy && <span className="busy-hint">思考中 · {elapsedSeconds}s</span>}
+          {messages.length === 0 && (
+            <div className="hero">
+              <img className="hero-logo" src="/ek-icon.png" alt="" />
+              <h1 className="hero-title">达人营销工作台</h1>
+              <p className="hero-greeting">把搜索、收藏、邮件外联和投放追踪串成一条工作流。</p>
             </div>
-            <div className="composer-btns">
-              {busy && (
-                <button className="send-btn stop" onClick={stop} aria-label="停止生成" title="停止生成">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="7" y="7" width="10" height="10" rx="1.5" />
+          )}
+          {messages.map((m, i) => (
+            <MessageView
+              key={i}
+              message={m}
+              active={busy && i === messages.length - 1 && m.role === 'assistant'}
+              elapsedSeconds={elapsedSeconds}
+              onRetry={!busy && i === messages.length - 1 ? retryLast : undefined}
+              dockedKinds={latestKolDisplay ? ['kol-list'] : []}
+            />
+          ))}
+          <div ref={bottomRef} />
+        </div>
+        {showJump && (
+          <button
+            className="jump-bottom"
+            aria-label="回到底部"
+            onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14" />
+              <path d="m19 12-7 7-7-7" />
+            </svg>
+          </button>
+        )}
+        <div className="composer-wrap">
+          <div className="composer-pill">
+            <textarea
+              ref={inputRef}
+              value={input}
+              placeholder="描述你想找的达人..."
+              onChange={(e) => {
+                setInput(e.target.value)
+                autosize()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.nativeEvent.isComposing) return
+                  e.preventDefault()
+                  send()
+                }
+              }}
+              rows={1}
+            />
+            <div className="composer-bar">
+              <div className="composer-meta">
+                {cost && (cost.cap > 0 || cost.spent > 0) && (
+                  <span className="quota-group" aria-label="配额信息">
+                    <span className="quota-pill">本会话已用 {cost.spent}</span>
+                    {cost.accountRemaining != null && (
+                      <span className="quota-pill">账户剩余 {cost.accountRemaining}</span>
+                    )}
+                  </span>
+                )}
+                {busy && <span className="busy-hint">思考中 · {elapsedSeconds}s</span>}
+              </div>
+              <div className="composer-btns">
+                {busy && (
+                  <button className="send-btn stop" onClick={stop} aria-label="停止生成" title="停止生成">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="7" y="7" width="10" height="10" rx="1.5" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  className="send-btn"
+                  onClick={() => send()}
+                  disabled={!input.trim() || (busy && !currentSession.current)}
+                  aria-label={busy ? '发送（排队执行）' : '发送'}
+                  title={busy ? '发送（排队执行）' : '发送'}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 19V5" />
+                    <path d="m5 12 7-7 7 7" />
                   </svg>
                 </button>
-              )}
-              <button
-                className="send-btn"
-                onClick={() => send()}
-                disabled={!input.trim() || (busy && !currentSession.current)}
-                aria-label={busy ? '发送（排队执行）' : '发送'}
-                title={busy ? '发送（排队执行）' : '发送'}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 19V5" />
-                  <path d="m5 12 7-7 7 7" />
-                </svg>
-              </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      {messages.length === 0 && (
-        <div className="starter-wrap">
-          <div className="hero-cards">
-            {STARTER_CARDS.map((c) => (
-              <button key={c.title} className="hero-card" onClick={() => pickStarter(c.prompt)}>
-                <span className="hero-card-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    {c.icon}
-                  </svg>
-                </span>
-                <span className="hero-card-text">
-                  <span className="hero-card-title">{c.title}</span>
-                  <span className="hero-card-desc">{c.desc}</span>
-                </span>
-              </button>
-            ))}
+        {messages.length === 0 && (
+          <div className="starter-wrap">
+            <div className="hero-cards">
+              {STARTER_CARDS.map((c) => (
+                <button key={c.title} className="hero-card" onClick={() => pickStarter(c.prompt)}>
+                  <span className="hero-card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      {c.icon}
+                    </svg>
+                  </span>
+                  <span className="hero-card-text">
+                    <span className="hero-card-title">{c.title}</span>
+                    <span className="hero-card-desc">{c.desc}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+      </section>
+      {latestKolDisplay && (
+        <aside className="results-pane" aria-label="搜索结果">
+          <ToolCard display={latestKolDisplay} />
+        </aside>
       )}
     </main>
   )
@@ -465,4 +486,15 @@ function contentToText(content: any): string {
       .join('')
   }
   return ''
+}
+
+function findLatestDisplay(messages: ChatMessage[], kind: string): ToolDisplay | null {
+  for (let mi = messages.length - 1; mi >= 0; mi--) {
+    const activities = messages[mi].activities
+    for (let ai = activities.length - 1; ai >= 0; ai--) {
+      const display = activities[ai].display
+      if (display?.kind === kind) return display
+    }
+  }
+  return null
 }

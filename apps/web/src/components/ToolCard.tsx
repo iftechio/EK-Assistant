@@ -151,14 +151,20 @@ function KolListCard({ data }: { data: any }) {
   const kols: any[] = data.kols ?? []
   const [expanded, setExpanded] = useState(false)
   const emailCount = kols.filter((k) => getEmail(k)).length
-  const preview = kols.slice(0, 12)
+  const preview = kols.slice(0, 20)
+  const platform = normalizePlatform(data.platform ?? kols[0]?.platform)
+  const platformName = platformLabel(platform)
   if (!kols.length) {
     return (
-      <div className="card kol-card">
-        <div className="kol-card-head">
+      <div className="card kol-card kol-results-card">
+        <div className="kol-results-head">
           <div>
-            <div className="card-title">KOL 结果</div>
-            <div className="kol-summary">共 {data.total ?? 0} 个，已返回 0 个</div>
+            <div className="kol-results-title">
+              <span className="status-dot" />
+              搜索结果
+              {platformName && <span className="kol-title-badge">{platformName}</span>}
+            </div>
+            <div className="kol-summary">共找到 {fmt(data.total ?? 0)} 位达人，当前没有可展示结果</div>
           </div>
         </div>
         <div className="kol-empty">
@@ -168,18 +174,25 @@ function KolListCard({ data }: { data: any }) {
     )
   }
   return (
-    <div className="card kol-card">
-      <div className="kol-card-head">
-        <div>
-          <div className="card-title">KOL 结果</div>
-          <div className="kol-summary">
-            共 {data.total ?? kols.length} 个，已返回 {data.returned ?? kols.length} 个
-            {emailCount ? `，${emailCount} 个有邮箱` : ''}
+    <div className="card kol-card kol-results-card">
+      <div className="kol-results-head">
+        <div className="kol-results-title-wrap">
+          <div className="kol-results-title">
+            <span className="status-dot" />
+            搜索结果
+            {platformName && <span className="kol-title-badge">{platformName}</span>}
+          </div>
+          <div className="kol-filter-bar" aria-label="搜索摘要">
+            <span className="filter-chip active">{platformName || '全平台'}</span>
+            <span className="filter-chip">已返回 {fmt(data.returned ?? kols.length)}</span>
+            <span className="filter-chip">有邮箱 {emailCount ? fmt(emailCount) : '0'}</span>
+            {data.source && <span className="filter-chip">种子 {String(data.source)}</span>}
+            {data.mode && <span className="filter-chip">模式 {String(data.mode)}</span>}
           </div>
         </div>
         <div className="kol-actions">
           <button className="ghost" disabled={!kols.length} onClick={() => setExpanded((v) => !v)}>
-            {expanded ? '收起表格' : '展开表格'}
+            {expanded ? '收起明细' : '展开明细'}
           </button>
           <button className="ghost" disabled={!kols.length} onClick={() => downloadKolsCsv(kols)}>
             下载 CSV
@@ -187,7 +200,26 @@ function KolListCard({ data }: { data: any }) {
         </div>
       </div>
 
-      <div className="kol-grid">
+      <div className="kol-platform-tabs" aria-label="平台结果">
+        <span className="kol-platform-tab active">
+          {platformIcon(platform)}
+          {platformName || '达人'}
+          <span>{fmt(data.total ?? kols.length)}</span>
+        </span>
+      </div>
+
+      <div className="kol-results-subhead">
+        <span>{platformName || '当前'} 当前页 {preview.length} 位达人</span>
+        <span>共找到 {fmt(data.total ?? kols.length)} 位达人</span>
+      </div>
+
+      <div className="kol-table-shell" role="table" aria-label="达人搜索结果">
+        <div className="kol-table-toolbar">
+          <label className="kol-check-row">
+            <input type="checkbox" disabled />
+            <span>共 {preview.length} 位达人</span>
+          </label>
+        </div>
         {preview.map((k, i) => (
           <KolItem kol={k} platform={data.platform} key={`${getAccount(k)}-${i}`} />
         ))}
@@ -215,7 +247,7 @@ function KolListCard({ data }: { data: any }) {
   )
 }
 
-/** 单个博主卡片：头像/昵称/主页链接/旗帜/简介/统计，取值方式与 easykol-web 的 platform-adapters 一致 */
+/** 单个博主行：头像/昵称/主页链接/内容预览/关键指标，取值方式与 easykol-web 的 platform-adapters 一致 */
 function KolItem({ kol: k, platform }: { kol: any; platform?: string }) {
   const [avatarFailed, setAvatarFailed] = useState(false)
   const p = normalizePlatform(k.platform ?? platform)
@@ -223,32 +255,75 @@ function KolItem({ kol: k, platform }: { kol: any; platform?: string }) {
   const avatar = getAvatar(k, p)
   const profileUrl = safeHref(getProfileUrl(k, p))
   const region = getRegion(k)
-  const secondary = getSecondaryStat(k, p)
+  const contentImages = getContentImages(k).slice(0, 3)
+  const profileHref = safeHref(profileUrl)
   return (
-    <div className="kol-item">
-      {avatar && !avatarFailed ? (
-        <img className="kol-avatar" src={avatar} alt={name} referrerPolicy="no-referrer" onError={() => setAvatarFailed(true)} />
-      ) : (
-        <div className="kol-avatar">{initialOf(name)}</div>
-      )}
-      <div className="kol-main">
-        <div className="kol-name">
-          {profileUrl ? (
-            <a href={profileUrl} target="_blank" rel="noreferrer">{name}</a>
-          ) : (
-            name
-          )}
-          {flagOf(region) && <span className="kol-flag" title={region}>{flagOf(region)}</span>}
-        </div>
-        <div className="kol-account">{getAccount(k)}</div>
-        {k.description && <div className="kol-desc">{k.description}</div>}
-        <div className="kol-meta">
-          <span>{fmt(getFollowers(k))} 粉丝</span>
-          {secondary && <span>{secondary}</span>}
-          {!flagOf(region) && region !== '地区未知' && <span>{region}</span>}
-          {getEmail(k) && <span title={getEmail(k)}>有邮箱</span>}
+    <div className="kol-result-row" role="row">
+      <div className="kol-select-cell">
+        <input type="checkbox" disabled aria-label={`选择 ${name}`} />
+      </div>
+      <div className="kol-profile-cell">
+        {avatar && !avatarFailed ? (
+          <img className="kol-avatar" src={avatar} alt={name} referrerPolicy="no-referrer" onError={() => setAvatarFailed(true)} />
+        ) : (
+          <div className="kol-avatar">{initialOf(name)}</div>
+        )}
+        <div className="kol-main">
+          <div className="kol-name">
+            {profileHref ? (
+              <a href={profileHref} target="_blank" rel="noreferrer">{name}</a>
+            ) : (
+              name
+            )}
+            <span className="platform-mark" title={platformLabel(p)}>{platformIcon(p)}</span>
+            {getEmail(k) && <span className="mail-mark" title={getEmail(k)}>✉</span>}
+          </div>
+          <div className="kol-account">
+            {getAccount(k)}
+            <span className="copy-mark" aria-hidden="true">□</span>
+          </div>
+          <div className="kol-region">
+            {flagOf(region) && <span className="kol-flag" title={region}>{flagOf(region)}</span>}
+            {countryLabel(region)}
+          </div>
+          <div className="kol-tags">
+            {getTags(k).slice(0, 2).map((tag, i) => (
+              <span key={`${tag}-${i}`}>{tag}</span>
+            ))}
+            {getTags(k).length > 2 && <span>...</span>}
+          </div>
         </div>
       </div>
+      <div className="kol-content-cell">
+        {contentImages.length > 0 ? (
+          contentImages.map((src, i) => (
+            <img key={`${src}-${i}`} src={src} alt="" referrerPolicy="no-referrer" />
+          ))
+        ) : (
+          <div className="kol-content-empty">暂无内容预览</div>
+        )}
+      </div>
+      <MetricCell label="粉丝数" value={fmt(getFollowers(k))} />
+      <MetricCell label={secondaryLabel(p)} value={getSecondaryStatValue(k, p)} />
+      <MetricCell label="互动率" value={getEngagementRate(k)} />
+      <MetricCell label="最新视频" value={getLatestPublishDate(k)} />
+      <div className="kol-row-actions">
+        {profileHref ? (
+          <a className="kol-action-link" href={profileHref} target="_blank" rel="noreferrer">主页</a>
+        ) : (
+          <span className="kol-action-link disabled">主页</span>
+        )}
+        <button className="kol-action-btn" disabled>找相似</button>
+      </div>
+    </div>
+  )
+}
+
+function MetricCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="kol-metric-cell">
+      <div className="kol-metric-label">{label}</div>
+      <div className="kol-metric-value">{value}</div>
     </div>
   )
 }
@@ -683,40 +758,130 @@ function CollectResultCard({ data }: { data: any }) {
 function SearchIntentCard({ data }: { data: any }) {
   const tags: any[] = data.canonicalTags ?? []
   const keywords: any[] = data.keywords ?? []
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedKeywords, setSelectedKeywords] = useState<string[]>([])
+  const selectedText = buildIntentSelectionText(selectedTags, selectedKeywords)
   return (
-    <div className="card">
-      <div className="card-title">搜索意图解析{data.platform ? `（${data.platform}）` : ''}</div>
-      {data.sentence && <div className="muted">「{data.sentence}」</div>}
+    <div className="card intent-card">
+      <div className="card-title">
+        搜索条件选择{data.platform ? `（${data.platform}）` : ''}
+        <span className="intent-selected-count">已选 {selectedTags.length + selectedKeywords.length}</span>
+      </div>
       {tags.length > 0 && (
-        <div className="analysis-section">
-          <div className="analysis-section-title">🏷 规范化标签</div>
-          <div className="chip-wrap">
+        <div className="intent-section">
+          <div className="intent-section-head">
+            <div>
+              <div className="intent-section-title">达人标签</div>
+              <div className="intent-section-desc">适合控制内容垂类、场景、风格等确定条件</div>
+            </div>
+            <span>{tags.length} 项</span>
+          </div>
+          <div className="intent-option-grid">
             {tags.map((t, i) => (
-              <span key={i} className="chip">
-                {t.name} <span className="chip-count">{fmt(t.count)}</span>
-              </span>
+              <IntentOption
+                key={`${t.name}-${i}`}
+                active={selectedTags.includes(t.name)}
+                label={t.name}
+                count={t.count}
+                onClick={() => setSelectedTags((current) => toggleValue(current, t.name))}
+              />
             ))}
           </div>
         </div>
       )}
       {keywords.length > 0 && (
-        <div className="analysis-section">
-          <div className="analysis-section-title">🔤 博主原文词</div>
-          <div className="chip-wrap">
+        <div className="intent-section">
+          <div className="intent-section-head">
+            <div>
+              <div className="intent-section-title">关键词</div>
+              <div className="intent-section-desc">适合扩大召回，按达人简介或内容原文匹配</div>
+            </div>
+            <span>{keywords.length} 项</span>
+          </div>
+          <div className="intent-option-grid">
             {keywords.map((k, i) => (
-              <span key={i} className={`chip ${k.source === 'ai' ? 'chip-ai' : ''}`}>
-                {k.name} <span className="chip-count">{fmt(k.count)}</span>
-              </span>
+              <IntentOption
+                key={`${k.name}-${i}`}
+                active={selectedKeywords.includes(k.name)}
+                label={k.name}
+                count={k.count}
+                meta={k.source === 'ai' ? 'AI 推荐' : undefined}
+                onClick={() => setSelectedKeywords((current) => toggleValue(current, k.name))}
+              />
             ))}
           </div>
         </div>
       )}
       {data.mustExclude?.length > 0 && (
-        <div className="muted">排除词：{data.mustExclude.join('、')}</div>
+        <div className="intent-exclude">排除词：{data.mustExclude.join('、')}</div>
       )}
-      <div className="muted">在对话里告诉我保留哪些标签/词，我再执行搜索（每选一项约多 50 个结果 / 1 配额）。</div>
+      <div className="intent-selection-bar">
+        <div className="intent-selection-text">
+          {selectedText || '选择标签或关键词后，我会按这些条件继续搜索。'}
+        </div>
+        <div className="intent-selection-actions">
+          <button
+            className="intent-action"
+            disabled={!selectedText}
+            onClick={() => {
+              setSelectedTags([])
+              setSelectedKeywords([])
+            }}
+          >
+            清空
+          </button>
+          <button
+            className="intent-action primary"
+            disabled={!selectedText}
+            onClick={() => {
+              if (!selectedText) return
+              window.dispatchEvent(new CustomEvent('ek-assistant:intent-search', { detail: selectedText }))
+            }}
+          >
+            搜索
+          </button>
+        </div>
+      </div>
     </div>
   )
+}
+
+function IntentOption({
+  active,
+  label,
+  count,
+  meta,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  count?: number
+  meta?: string
+  onClick: () => void
+}) {
+  return (
+    <button className={`intent-option ${active ? 'active' : ''}`} type="button" onClick={onClick}>
+      <span className="intent-option-check">{active ? '✓' : ''}</span>
+      <span className="intent-option-main">
+        <span className="intent-option-name">{label}</span>
+        <span className="intent-option-meta">
+          {meta ? `${meta} · ` : ''}
+          {fmt(count)}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function toggleValue(values: string[], value: string): string[] {
+  return values.includes(value) ? values.filter((v) => v !== value) : [...values, value]
+}
+
+function buildIntentSelectionText(tags: string[], keywords: string[]): string {
+  const parts = []
+  if (tags.length) parts.push(`保留达人标签：${tags.join('、')}`)
+  if (keywords.length) parts.push(`保留关键词：${keywords.join('、')}`)
+  return parts.length ? `${parts.join('；')}，请按这些条件搜索达人。` : ''
 }
 
 function ExportResultCard({ data }: { data: any }) {
@@ -937,6 +1102,20 @@ function normalizePlatform(platform: unknown): string {
   return String(platform ?? '').toUpperCase()
 }
 
+function platformLabel(platform: string): string {
+  if (platform === 'TIKTOK') return 'TikTok'
+  if (platform === 'INSTAGRAM') return 'Instagram'
+  if (platform === 'YOUTUBE') return 'YouTube'
+  return ''
+}
+
+function platformIcon(platform: string): string {
+  if (platform === 'TIKTOK') return '♪'
+  if (platform === 'INSTAGRAM') return '◎'
+  if (platform === 'YOUTUBE') return '▶'
+  return '人'
+}
+
 /** 昵称优先级与 easykol-web platform-adapters 一致 */
 function getDisplayName(k: any, platform: string): string {
   if (platform === 'TIKTOK' && k.tiktokUser) {
@@ -990,6 +1169,129 @@ function getSecondaryStat(k: any, platform: string): string {
     return `均观看 ${fmt(k.youtubeChannel.videosAverageViewCount)}`
   }
   return ''
+}
+
+function secondaryLabel(platform: string): string {
+  if (platform === 'INSTAGRAM') return '平均点赞'
+  if (platform === 'YOUTUBE') return '平均观看'
+  return '平均播放'
+}
+
+function getSecondaryStatValue(k: any, platform: string): string {
+  const value =
+    platform === 'INSTAGRAM'
+      ? k.instagramUser?.averageLikeCount ?? k.averageLikeCount ?? k.avgLikes
+      : platform === 'YOUTUBE'
+        ? k.youtubeChannel?.videosAverageViewCount ?? k.averageViewCount ?? k.avgViews
+        : k.tiktokUser?.averagePlayCount ?? k.averagePlayCount ?? k.averageViewCount ?? k.avgViews
+  return fmt(value)
+}
+
+function getEngagementRate(k: any): string {
+  const raw =
+    k.engagementRate ??
+    k.interactionRate ??
+    nestedUser(k)?.engagementRate ??
+    nestedUser(k)?.interactionRate
+  if (typeof raw === 'string') return raw.includes('%') ? raw : `${raw}%`
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return '-'
+  const pct = raw > 0 && raw <= 1 ? raw * 100 : raw
+  return `${pct.toFixed(2)}%`
+}
+
+function getLatestPublishDate(k: any): string {
+  const value =
+    k.latestPublishDate ??
+    k.lastPublishDate ??
+    k.lastPublishedAt ??
+    k.publishDate ??
+    nestedUser(k)?.latestPublishDate ??
+    nestedUser(k)?.lastPublishDate ??
+    nestedUser(k)?.lastPublishedAt
+  return fmtShortDate(value)
+}
+
+function fmtShortDate(value: unknown): string {
+  if (!value) return '-'
+  const d = new Date(value as string)
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function getContentImages(k: any): string[] {
+  const lists = [
+    k.posts,
+    k.postList,
+    k.videos,
+    k.videoList,
+    k.contents,
+    k.recentPosts,
+    k.recentVideos,
+    k.tiktokVideos,
+    k.instagramPosts,
+    k.youtubeVideos,
+    nestedUser(k)?.posts,
+    nestedUser(k)?.videos,
+  ].filter(Array.isArray) as any[][]
+  const urls: string[] = []
+  for (const list of lists) {
+    for (const item of list) {
+      const src = pickImageUrl(item)
+      if (src && !urls.includes(src)) urls.push(src)
+      if (urls.length >= 3) return urls
+    }
+  }
+  return urls
+}
+
+function pickImageUrl(item: any): string {
+  if (!item || typeof item !== 'object') return ''
+  const value =
+    item.cover ??
+    item.coverUrl ??
+    item.thumbnail ??
+    item.thumbnailUrl ??
+    item.image ??
+    item.imageUrl ??
+    item.displayUrl ??
+    item.mediaUrl ??
+    item.videoCover
+  return safeHref(value) ?? ''
+}
+
+function getTags(k: any): string[] {
+  const candidates = [
+    k.tags,
+    k.labels,
+    k.categories,
+    k.categoryTags,
+    k.keywords,
+    k.signatureTags,
+  ]
+  const values = candidates.flatMap((item) => {
+    if (!Array.isArray(item)) return []
+    return item.map((v) => (typeof v === 'string' ? v : v?.name ?? v?.label)).filter(Boolean)
+  })
+  const desc = typeof k.description === 'string' ? k.description : ''
+  if (!values.length && desc) values.push(...desc.split(/[，,/#\s]+/).filter(Boolean).slice(0, 2))
+  return [...new Set(values.map((v) => String(v)).filter(Boolean))]
+}
+
+function countryLabel(region: string): string {
+  const code = String(region ?? '').trim().toUpperCase()
+  const labels: Record<string, string> = {
+    US: 'United States',
+    GB: 'United Kingdom',
+    UK: 'United Kingdom',
+    CA: 'Canada',
+    AU: 'Australia',
+    JP: 'Japan',
+    KR: 'South Korea',
+    DE: 'Germany',
+    FR: 'France',
+  }
+  return labels[code] ?? (region && region !== '地区未知' ? region : '地区未知')
 }
 
 /** ISO 两位国家码 → 旗帜 emoji；与 easykol-web 一致，TW 不展示旗帜 */
