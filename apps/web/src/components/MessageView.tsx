@@ -185,7 +185,7 @@ function StepsPanel({
           </div>
         ))}
 
-      {active && message.activities.length === 0 && (
+      {active && message.activities.length === 0 && !message.text && (
         <div className="steps-item">
           <div className="step-row running">
             <span className="step-icon">

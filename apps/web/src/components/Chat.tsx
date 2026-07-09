@@ -442,7 +442,7 @@ export default function Chat({
             <textarea
               ref={inputRef}
               value={input}
-              placeholder="描述你想找的达人..."
+              placeholder="跟我说说你的需求，比如搜索达人、追踪投放数据、分析评论反馈…"
               onChange={(e) => {
                 setInput(e.target.value)
                 autosize()

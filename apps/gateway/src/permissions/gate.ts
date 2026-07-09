@@ -133,19 +133,27 @@ async function runTool(
   }
 }
 
-/** backend 各任务接口的轮询响应字段不统一，尽力提取人话进度 */
+/**
+ * backend 各任务接口的轮询响应字段不统一，尽力提取人话进度。
+ * 优先用状态码翻出的中文标签——backend 的 message 字段口径不统一，
+ * 有的接口只是队列库的原始英文占位符（如 "Task is still processing"），
+ * 直接透传会把英文塞进用户看到的进度条，只在状态未知时才兜底用它。
+ */
 function describePolled(polled: unknown): string {
   if (polled && typeof polled === 'object') {
     const p = polled as { message?: unknown; status?: unknown }
-    if (typeof p.message === 'string' && p.message) return p.message
     if (typeof p.status === 'string' && p.status) {
       const labels: Record<string, string> = {
         PENDING: '任务排队中',
         PROCESSING: '数据抓取中',
         RESULT_READY: '结果整理中',
+        PAUSING: '任务暂停中',
+        PAUSED: '任务已暂停',
+        COMPLETING: '任务收尾中',
       }
-      return labels[p.status] ?? `任务状态：${p.status}`
+      if (labels[p.status]) return labels[p.status]
     }
+    if (typeof p.message === 'string' && p.message) return p.message
   }
   return '后台任务处理中'
 }

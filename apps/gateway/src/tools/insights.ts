@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import { defineTool } from './types.js'
-import { requireParam } from './helpers.js'
 
 const TERMINAL = new Set(['COMPLETED', 'FAILED'])
 
@@ -95,24 +94,24 @@ const IG_POST_CODE = /instagram\.com\/(?:p|reel|tv)\/([\w-]+)/
 export const detectFakeFollowers = defineTool({
   name: 'detect_fake_followers',
   description:
-    'Instagram 假粉/假互动检测：mode=audience 分析某达人的受众里真人/网红/假号占比（传 IG 用户名）；mode=post 分析某条帖子点赞者的真实性（传帖子链接或 code）。消耗配额约 20 分/次（近期查过同一对象会命中缓存不扣费）。',
+    'Instagram 假粉/假互动检测：mode=audience 分析某达人的受众里真人/网红/假号占比；mode=post 分析某条帖子点赞者的真实性。target 参数按 mode 决定内容：audience 传 IG 用户名（不带 @），post 传帖子链接或 code。消耗配额约 20 分/次（近期查过同一对象会命中缓存不扣费）。',
   permission: 'quota',
   inputSchema: z.object({
     mode: z.enum(['audience', 'post']),
-    handler: z.string().optional().describe('audience 模式必填：Instagram 用户名（不带 @）'),
-    post: z.string().optional().describe('post 模式必填：帖子链接或 code'),
+    target: z.string().describe('mode=audience 时传 Instagram 用户名（不带 @）；mode=post 时传帖子链接或 code'),
   }),
   estimateQuota: () => 20,
   summarize: (input) =>
-    input.mode === 'audience' ? `检测 @${input.handler ?? ''} 的受众真实性` : '检测帖子点赞者真实性',
+    input.mode === 'audience' ? `检测 @${input.target} 的受众真实性` : '检测帖子点赞者真实性',
   execute: async (input, ctx) => {
     const isAudience = input.mode === 'audience'
     let created: { task?: { id: string; status: string }; fromCache?: boolean }
     if (isAudience) {
-      const handler = requireParam(input.handler, 'handler').replace(/^@/, '')
+      const handler = input.target.replace(/^@/, '').trim()
+      if (!handler) throw new Error('缺少 Instagram 用户名')
       created = await ctx.backend.post('/api/ins/audience-fake', undefined, { handler })
     } else {
-      const raw = requireParam(input.post, 'post')
+      const raw = input.target
       // 链接解析失败时不能把整个 URL 当 code 传给 backend；裸 code（不含 /）原样放行
       const code = IG_POST_CODE.exec(raw)?.[1] ?? (raw.includes('/') ? null : raw)
       if (!code) throw new Error('无法从链接中识别 Instagram 帖子 code，请传入标准帖子链接或 code 本身')
@@ -152,7 +151,7 @@ export const detectFakeFollowers = defineTool({
         kind: 'fake-detection',
         data: {
           mode: input.mode,
-          target: isAudience ? input.handler : input.post,
+          target: input.target,
           fromCache: created.fromCache,
           breakdown: counts,
           sampleTotal: list.length,
