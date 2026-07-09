@@ -45,10 +45,6 @@ export interface ToolContext {
   backend: BackendClient
   costMeter: CostMeter
   emit: (event: AgentEvent) => void
-  logActivity: (summary: string, detail?: unknown) => Promise<void>
-  /** 轻量记忆：按 (user, key) 持久化的用户偏好（remember_preference 工具用） */
-  saveMemory: (key: string, value: unknown) => Promise<void>
-  deleteMemory: (key: string) => Promise<void>
 }
 
 export interface ToolExecuteResult {

@@ -17,7 +17,6 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
       add: vi.fn(async (n: number) => n),
     } as any,
     emit: vi.fn(),
-    logActivity: vi.fn(async () => {}),
     ...overrides,
   }
 }
@@ -122,7 +121,7 @@ describe('executeWithGate', () => {
     expect(ctx.costMeter.add).toHaveBeenCalledWith(10)
   })
 
-  it('write_logged 级工具执行后写活动日志', async () => {
+  it('write_logged 级工具直接执行', async () => {
     const tool = defineTool({
       ...baseTool,
       name: 'save',
@@ -134,6 +133,5 @@ describe('executeWithGate', () => {
 
     const result = (await executeWithGate(tool, {}, ctx, store)) as any
     expect(result.saved).toBe(1)
-    expect(ctx.logActivity).toHaveBeenCalledWith('测试操作', expect.anything())
   })
 })

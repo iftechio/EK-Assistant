@@ -62,8 +62,5 @@ function mockContext(): ToolContext {
     } as any,
     costMeter: {} as any,
     emit: () => {},
-    logActivity: async () => {},
-    saveMemory: async () => {},
-    deleteMemory: async () => {},
   }
 }

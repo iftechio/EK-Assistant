@@ -75,9 +75,4 @@ export function registerSessionRoutes(app: FastifyInstance, store: SessionStore)
     return { ok: true }
   })
 
-  app.get<{ Querystring: { sessionId?: string } }>('/api/activity', async (request, reply) => {
-    const user = await auth(request, reply)
-    if (!user) return
-    return store.listActivity(user.userId, request.query.sessionId)
-  })
 }

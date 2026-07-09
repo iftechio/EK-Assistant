@@ -16,7 +16,6 @@ import { trackPublications, getTrackingResults, manageTracking, listMyTasks } fr
 import { saveKolsToProject } from './kols.js'
 import { exportComments, analyzeCommentsFeedback } from './comments.js'
 import { compareCampaignPerformance } from './performance.js'
-import { rememberPreference } from './memory.js'
 
 /** Tool Registry：名字 + JSON Schema(Zod) + handler，可扩展形状（后续新工具在此登记） */
 const tools: AssistantTool[] = [
@@ -37,7 +36,6 @@ const tools: AssistantTool[] = [
   exportComments,
   analyzeCommentsFeedback,
   compareCampaignPerformance,
-  rememberPreference,
   sendSingleEmail,
   exportKols,
   manageExcludeList,

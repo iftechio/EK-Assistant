@@ -90,9 +90,7 @@ export async function executeApprovedAction(
   input: unknown,
   ctx: ToolContext,
 ): Promise<unknown> {
-  const result = await runTool(tool, input, ctx)
-  await ctx.logActivity(`[用户已确认] ${tool.summarize(input)}`, { toolName: tool.name, input })
-  return result
+  return runTool(tool, input, ctx)
 }
 
 /**

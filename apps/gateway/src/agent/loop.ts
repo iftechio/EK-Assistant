@@ -43,7 +43,6 @@ export async function runAgentTurn(args: {
     await store.touchSession(session.id, { title: userMessage.slice(0, 40) })
   }
 
-  const memory = await store.getMemory(user.userId)
   const history = await loadHistory(store, session.id)
 
   const costMeter = new CostMeter(store, session.id, session.quota_spent)
@@ -54,16 +53,6 @@ export async function runAgentTurn(args: {
     backend: new BackendClient(user.jwt),
     costMeter,
     emit,
-    logActivity: (summary, detail) =>
-      store.logActivity({
-        sessionId: session.id,
-        userId: user.userId,
-        toolName: typeof detail === 'object' && detail && 'toolName' in detail ? String((detail as any).toolName) : '',
-        summary,
-        detail,
-      }),
-    saveMemory: (key, value) => store.setMemory(user.userId, key, value),
-    deleteMemory: (key) => store.deleteMemory(user.userId, key),
   }
 
   const tools = Object.fromEntries(
@@ -93,7 +82,7 @@ export async function runAgentTurn(args: {
     ]),
   )
 
-  let system = buildSystemPrompt({ userEmail: user.email, memory })
+  let system = buildSystemPrompt({ userEmail: user.email })
   if (session.context_summary) {
     system += `\n\n[早前对话摘要]\n${session.context_summary}\n（以上是更早对话的压缩摘要。基于它直接继续当前任务；不要向用户复述摘要内容，也不要重新确认摘要中已确认过的事项。）`
   }

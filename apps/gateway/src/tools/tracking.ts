@@ -97,10 +97,6 @@ export const trackPublications = defineTool({
       body,
     )
     const platforms = [...groups.keys()]
-    await ctx.logActivity(`追踪 ${platforms.join(' / ')} 的 ${input.urls.length} 条发布数据`, {
-      toolName: 'track_publications',
-      input,
-    })
     return {
       forModel: {
         taskId: task.id,
@@ -171,7 +167,7 @@ export const getTrackingResults = defineTool({
 export const manageTracking = defineTool({
   name: 'manage_tracking',
   description:
-    '管理已有的投放追踪数据：update_batch=按发布 ID 批量刷新数据（按条数扣配额，1 配额/条）；delete_batch=批量删除投放数据（免费）。发布 ID 从 get_tracking_results view=list 的结果里取。自动执行并记入活动日志。',
+    '管理已有的投放追踪数据：update_batch=按发布 ID 批量刷新数据（按条数扣配额，1 配额/条）；delete_batch=批量删除投放数据（免费）。发布 ID 从 get_tracking_results view=list 的结果里取。',
   permission: 'quota',
   estimateQuota: (input) => (input.action === 'update_batch' ? input.publicationIds.length : 0),
   inputSchema: z.object({
@@ -183,19 +179,11 @@ export const manageTracking = defineTool({
       ? `刷新 ${input.publicationIds.length} 条投放数据`
       : `删除 ${input.publicationIds.length} 条投放数据`,
   execute: async (input, ctx) => {
-    const logDone = () =>
-      ctx.logActivity(
-        input.action === 'update_batch'
-          ? `刷新 ${input.publicationIds.length} 条投放数据`
-          : `删除 ${input.publicationIds.length} 条投放数据`,
-        { toolName: 'manage_tracking', input },
-      )
     if (input.action === 'update_batch') {
       const task = await ctx.backend.post<{ id?: string; taskId?: string }>(
         '/api/publicationStatistics/task/update-batch',
         { publicationIds: input.publicationIds },
       )
-      await logDone()
       const taskId = task?.id ?? task?.taskId
       return {
         forModel: {
@@ -218,7 +206,6 @@ export const manageTracking = defineTool({
     await ctx.backend.post('/api/publicationStatistics/delete-batch', {
       publicationIds: input.publicationIds,
     })
-    await logDone()
     return {
       forModel: { deleted: input.publicationIds.length },
       display: {

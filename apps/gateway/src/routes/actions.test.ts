@@ -61,9 +61,6 @@ function makeStore(actions: Map<string, ActionRecord>) {
     }),
     getSession: vi.fn(async (id: string) => ({ id, quota_spent: 0 })),
     appendMessage: vi.fn(async () => 'mid'),
-    logActivity: vi.fn(async () => {}),
-    setMemory: vi.fn(async () => {}),
-    deleteMemory: vi.fn(async () => {}),
     addQuotaSpent: vi.fn(async (_id: string, n: number) => n),
   } as unknown as SessionStore
 }

@@ -77,16 +77,6 @@ export function registerActionRoutes(app: FastifyInstance, store: SessionStore) 
         emit: (event) => {
           if (event.type === 'tool-result' && event.display) displays.push(event.display)
         },
-        logActivity: (summary, detail) =>
-          store.logActivity({
-            sessionId: session.id,
-            userId: user.userId,
-            toolName: action.tool_name,
-            summary,
-            detail,
-          }),
-        saveMemory: (key, value) => store.setMemory(user.userId, key, value),
-        deleteMemory: (key) => store.deleteMemory(user.userId, key),
       }
 
       try {
