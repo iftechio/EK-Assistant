@@ -6,6 +6,7 @@ import { registerChatRoutes } from './routes/chat.js'
 import { registerActionRoutes } from './routes/actions.js'
 import { registerSessionRoutes } from './routes/sessions.js'
 import { registerExportRoutes } from './routes/export.js'
+import { registerProjectRoutes } from './routes/projects.js'
 
 async function main() {
   const app = Fastify({ logger: true })
@@ -30,6 +31,7 @@ async function main() {
   registerActionRoutes(app, store)
   registerSessionRoutes(app, store)
   registerExportRoutes(app)
+  registerProjectRoutes(app)
 
   let shuttingDown = false
   const shutdown = async () => {

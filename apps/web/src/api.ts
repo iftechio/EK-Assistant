@@ -9,6 +9,11 @@ async function authHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 }
 
+export interface ProjectSummary {
+  id: string
+  title: string
+}
+
 /** 发送消息并消费 SSE 事件流 */
 export async function streamChat(
   message: string,
@@ -74,6 +79,25 @@ export async function listSessions(): Promise<SessionSummary[]> {
   const res = await fetch(`${GATEWAY_URL}/api/sessions`, { headers: await authHeaders() })
   if (!res.ok) return []
   return res.json()
+}
+
+export async function listProjects(): Promise<ProjectSummary[]> {
+  const res = await fetch(`${GATEWAY_URL}/api/projects`, { headers: await authHeaders() })
+  if (!res.ok) throw new Error('加载项目失败')
+  return res.json()
+}
+
+export async function rateKolInProject(body: {
+  projectId: string
+  kolId: string
+  attitude: 'LIKE' | 'DISLIKE'
+}): Promise<void> {
+  const res = await fetch(`${GATEWAY_URL}/api/projects/${encodeURIComponent(body.projectId)}/kols/rate`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ kolId: body.kolId, attitude: body.attitude }),
+  })
+  if (!res.ok) throw new Error('达人标记失败')
 }
 
 export async function renameSession(sessionId: string, title: string): Promise<void> {

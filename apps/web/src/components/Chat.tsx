@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { getSessionMessages, streamChat } from '../api'
 import type { AgentEvent, ChatMessage, ToolDisplay } from '../types'
 import MessageView from './MessageView'
@@ -6,19 +6,19 @@ import ToolCard from './ToolCard'
 
 const STARTER_CARDS = [
   {
-    title: '搜索达人',
-    desc: '按平台、地区、粉丝量和内容风格筛选候选人。',
+    title: 'AI 搜索',
+    desc: '用自然语言描述目标达人，自动拆解条件并生成候选名单。',
     icon: (
       <>
         <circle cx="11" cy="11" r="7" />
         <path d="m20 20-3.5-3.5" />
       </>
     ),
-    prompt: '帮我在 TikTok 上找 10 个美妆类达人，粉丝量 1w-50w',
+    prompt: '帮我在 TikTok 上找一批适合美妆护肤投放的达人，粉丝量 1w-50w',
   },
   {
-    title: '相似达人',
-    desc: '输入种子账号，继续扩展同类达人池。',
+    title: '相似达人搜索',
+    desc: '输入一个种子账号，扩展出风格和受众相近的达人。',
     icon: (
       <>
         <circle cx="9" cy="8" r="3.5" />
@@ -30,26 +30,30 @@ const STARTER_CARDS = [
     prompt: '帮我找和这个达人相似的账号：',
   },
   {
-    title: '邮件外联',
-    desc: '基于名单、模板和发送节奏生成外联计划。',
+    title: '受众分析',
+    desc: '查看达人受众地区、年龄、性别和假粉风险。',
     icon: (
       <>
-        <rect x="3" y="5" width="18" height="14" rx="2.5" />
-        <path d="m3.5 7 8.5 6 8.5-6" />
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <rect x="7" y="11" width="3" height="5" rx="1" />
+        <rect x="12" y="8" width="3" height="8" rx="1" />
+        <rect x="17" y="4" width="3" height="12" rx="1" />
       </>
     ),
-    prompt: '帮我给收藏的达人发合作邀约邮件',
+    prompt: '帮我分析这个达人的受众画像和假粉风险：',
   },
   {
-    title: '不知道从哪开始？',
-    desc: '从目标、市场和执行步骤开始拆解任务。',
+    title: '投放追踪',
+    desc: '追踪发布内容、评论反馈和投放效果。',
     icon: (
       <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="m15.5 8.5-2 5-5 2 2-5z" />
+        <path d="M4 19V5" />
+        <path d="m4 15 5-5 4 4 7-8" />
+        <path d="M15 6h5v5" />
       </>
     ),
-    prompt: '我是第一次做 KOL 投放，请一步步引导我',
+    prompt: '帮我追踪这次 KOL 投放的发布内容、评论反馈和效果数据',
   },
 ]
 
@@ -81,6 +85,21 @@ export default function Chat({
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const latestKolDisplay = findLatestDisplay(messages, 'kol-list')
+  const [canDockResults, setCanDockResults] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 1180))
+  const [resultSidebarWidth, setResultSidebarWidth] = useState(720)
+  const [resultSidebarCollapsed, setResultSidebarCollapsed] = useState(false)
+  const dockedKolDisplay = canDockResults ? latestKolDisplay : null
+
+  useEffect(() => {
+    const updateCanDock = () => setCanDockResults(window.innerWidth >= 1180)
+    updateCanDock()
+    window.addEventListener('resize', updateCanDock)
+    return () => window.removeEventListener('resize', updateCanDock)
+  }, [])
+
+  useEffect(() => {
+    if (dockedKolDisplay) setResultSidebarCollapsed(false)
+  }, [dockedKolDisplay])
 
   useEffect(() => {
     currentSession.current = sessionId
@@ -190,6 +209,23 @@ export default function Chat({
   const stop = () => {
     controllersRef.current.forEach((c) => c.abort())
     controllersRef.current.clear()
+  }
+
+  const startResultResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (resultSidebarCollapsed) return
+    event.preventDefault()
+    const minWidth = 620
+    const maxWidth = Math.min(980, Math.max(minWidth, window.innerWidth - 420))
+    const resize = (moveEvent: PointerEvent) => {
+      const nextWidth = window.innerWidth - moveEvent.clientX
+      setResultSidebarWidth(Math.min(maxWidth, Math.max(minWidth, nextWidth)))
+    }
+    const stopResize = () => {
+      window.removeEventListener('pointermove', resize)
+      window.removeEventListener('pointerup', stopResize)
+    }
+    window.addEventListener('pointermove', resize)
+    window.addEventListener('pointerup', stopResize, { once: true })
   }
 
   /** 重发最后一条用户消息（出错后的重试入口） */
@@ -349,8 +385,15 @@ export default function Chat({
     return () => window.removeEventListener('ek-assistant:intent-search', onIntentSearch)
   })
 
+  const resultLayoutStyle = dockedKolDisplay
+    ? ({ '--results-width': `${resultSidebarWidth}px` } as CSSProperties)
+    : undefined
+
   return (
-    <main className={`chat ${messages.length === 0 ? 'empty' : ''} ${latestKolDisplay ? 'has-results' : ''}`}>
+    <main
+      className={`chat ${messages.length === 0 ? 'empty' : ''} ${dockedKolDisplay ? 'has-results' : ''}`}
+      style={resultLayoutStyle}
+    >
       <section className="chat-thread">
         <div
           className="message-list"
@@ -363,9 +406,11 @@ export default function Chat({
         >
           {messages.length === 0 && (
             <div className="hero">
-              <img className="hero-logo" src="/ek-icon.png" alt="" />
-              <h1 className="hero-title">达人营销工作台</h1>
-              <p className="hero-greeting">把搜索、收藏、邮件外联和投放追踪串成一条工作流。</p>
+              <div className="hero-brand">
+                <img className="hero-logo" src="/ek-icon.png" alt="" />
+                <h1 className="hero-title">EasyKOL</h1>
+              </div>
+              <p className="hero-greeting">从发现达人、评估受众到建联追踪，覆盖 KOL 投放关键流程。</p>
             </div>
           )}
           {messages.map((m, i) => (
@@ -375,7 +420,7 @@ export default function Chat({
               active={busy && i === messages.length - 1 && m.role === 'assistant'}
               elapsedSeconds={elapsedSeconds}
               onRetry={!busy && i === messages.length - 1 ? retryLast : undefined}
-              dockedKinds={latestKolDisplay ? ['kol-list'] : []}
+              dockedKinds={dockedKolDisplay ? ['kol-list'] : []}
             />
           ))}
           <div ref={bottomRef} />
@@ -467,9 +512,27 @@ export default function Chat({
           </div>
         )}
       </section>
-      {latestKolDisplay && (
-        <aside className="results-pane" aria-label="搜索结果">
-          <ToolCard display={latestKolDisplay} />
+      {dockedKolDisplay && (
+        <aside className={`results-pane ${resultSidebarCollapsed ? 'is-collapsed' : ''}`} aria-label="搜索结果">
+          <div
+            className="results-resize-handle"
+            role="separator"
+            aria-label="调整结果栏宽度"
+            aria-orientation="vertical"
+            onPointerDown={startResultResize}
+          >
+            <button
+              className="results-collapse-btn"
+              type="button"
+              aria-label={resultSidebarCollapsed ? '展开结果栏' : '收起结果栏'}
+              title={resultSidebarCollapsed ? '展开结果栏' : '收起结果栏'}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => setResultSidebarCollapsed((value) => !value)}
+            />
+          </div>
+          <div className="results-pane-content" aria-hidden={resultSidebarCollapsed}>
+            <ToolCard display={dockedKolDisplay} />
+          </div>
         </aside>
       )}
     </main>

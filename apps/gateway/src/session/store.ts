@@ -80,24 +80,6 @@ CREATE TABLE IF NOT EXISTS assistant_pending_actions (
   resolved_at TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS assistant_activity_log (
-  id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  tool_name TEXT NOT NULL,
-  summary TEXT NOT NULL,
-  detail JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_assistant_activity_user ON assistant_activity_log(user_id, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS assistant_memory (
-  user_id TEXT NOT NULL,
-  key TEXT NOT NULL,
-  value JSONB NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, key)
-);
 `
 
 export class SessionStore {
@@ -316,54 +298,5 @@ export class SessionStore {
       `UPDATE assistant_pending_actions SET status = $2, result = $3, resolved_at = now() WHERE id = $1`,
       [id, status, result === undefined ? null : JSON.stringify(result)],
     )
-  }
-
-  // ---- activity log ----
-
-  async logActivity(args: {
-    sessionId: string
-    userId: string
-    toolName: string
-    summary: string
-    detail?: unknown
-  }): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO assistant_activity_log (id, session_id, user_id, tool_name, summary, detail)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [randomUUID(), args.sessionId, args.userId, args.toolName, args.summary, args.detail ? JSON.stringify(args.detail) : null],
-    )
-  }
-
-  async listActivity(userId: string, sessionId?: string): Promise<unknown[]> {
-    const { rows } = await this.pool.query(
-      `SELECT * FROM assistant_activity_log WHERE user_id = $1
-       ${sessionId ? 'AND session_id = $2' : ''}
-       ORDER BY created_at DESC LIMIT 100`,
-      sessionId ? [userId, sessionId] : [userId],
-    )
-    return rows
-  }
-
-  // ---- 轻量记忆（按 user 存偏好，如常用平台/项目） ----
-
-  async getMemory(userId: string): Promise<Record<string, unknown>> {
-    const { rows } = await this.pool.query<{ key: string; value: unknown }>(
-      `SELECT key, value FROM assistant_memory WHERE user_id = $1`,
-      [userId],
-    )
-    return Object.fromEntries(rows.map((r) => [r.key, r.value]))
-  }
-
-  async setMemory(userId: string, key: string, value: unknown): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO assistant_memory (user_id, key, value, updated_at)
-       VALUES ($1, $2, $3, now())
-       ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-      [userId, key, JSON.stringify(value)],
-    )
-  }
-
-  async deleteMemory(userId: string, key: string): Promise<void> {
-    await this.pool.query(`DELETE FROM assistant_memory WHERE user_id = $1 AND key = $2`, [userId, key])
   }
 }

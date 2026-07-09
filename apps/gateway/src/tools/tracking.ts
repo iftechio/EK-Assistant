@@ -25,28 +25,79 @@ const PLATFORM_KEY: Record<(typeof TRACK_PLATFORMS)[number], string> = {
   BILIBILI: 'bilibili',
 }
 
+function inferTrackingPlatform(url: string): (typeof TRACK_PLATFORMS)[number] | null {
+  let host: string
+  try {
+    host = new URL(url).hostname.toLowerCase()
+  } catch {
+    return null
+  }
+  if (/(^|\.)tiktok\.com$/.test(host)) return 'TIKTOK'
+  if (/(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)) return 'YOUTUBE'
+  if (/(^|\.)instagram\.com$/.test(host)) return 'INSTAGRAM'
+  if (/(^|\.)douyin\.com$/.test(host)) return 'DOUYIN'
+  if (/(^|\.)xiaohongshu\.com$/.test(host) || /(^|\.)xhslink\.com$/.test(host)) return 'XHS'
+  if (/(^|\.)facebook\.com$/.test(host) || /(^|\.)fb\.watch$/.test(host)) return 'FACEBOOK'
+  if (/(^|\.)threads\.net$/.test(host)) return 'THREADS'
+  if (/(^|\.)bilibili\.com$/.test(host) || /(^|\.)b23\.tv$/.test(host)) return 'BILIBILI'
+  return null
+}
+
+function groupTrackingUrls(input: {
+  platform?: (typeof TRACK_PLATFORMS)[number]
+  urls: string[]
+}) {
+  const groups = new Map<(typeof TRACK_PLATFORMS)[number], string[]>()
+  const unknown: string[] = []
+  for (const url of input.urls) {
+    const platform = input.platform ?? inferTrackingPlatform(url)
+    if (!platform) {
+      unknown.push(url)
+      continue
+    }
+    groups.set(platform, [...(groups.get(platform) ?? []), url])
+  }
+  return { groups, unknown }
+}
+
 export const trackPublications = defineTool({
   name: 'track_publications',
   description:
-    '把合作视频/帖子链接加入投放数据追踪（播放/点赞/评论/互动率等指标会持续更新）。数据抓取在后台进行，稍后用 get_tracking_results 查看。按链接数量扣配额（1 配额/条）。',
+    '把合作视频/帖子链接加入投放数据追踪（播放/点赞/评论/互动率等指标会持续更新）。平台可由链接自动识别：youtube.com/youtu.be=YOUTUBE，tiktok.com=TIKTOK，instagram.com=INSTAGRAM；不要在能从域名判断时反问用户平台。数据抓取在后台进行，用户稍后可以直接问"查看投放数据"。按链接数量扣配额（1 配额/条）。',
   permission: 'quota',
   estimateQuota: (input) => input.urls.length,
   inputSchema: z.object({
-    platform: z.enum(TRACK_PLATFORMS),
+    platform: z.enum(TRACK_PLATFORMS).optional().describe('平台；不传则根据链接域名自动识别'),
     urls: z.array(z.string().url()).min(1).max(50).describe('要追踪的视频/帖子链接'),
     tagIds: z.array(z.string()).optional().describe('给这批追踪打的标签 ID'),
   }),
-  summarize: (input) => `追踪 ${input.platform} 的 ${input.urls.length} 条发布数据`,
+  summarize: (input) => {
+    const { groups } = groupTrackingUrls(input)
+    const platforms = [...groups.keys()].join(' / ') || input.platform || ''
+    return `追踪 ${platforms} 的 ${input.urls.length} 条发布数据`
+  },
   execute: async (input, ctx) => {
+    const { groups, unknown } = groupTrackingUrls(input)
+    if (unknown.length || !groups.size) {
+      return {
+        forModel: {
+          error: '无法从链接识别平台，目前支持 YouTube / TikTok / Instagram 等公开视频或帖子链接',
+          unknownUrls: unknown.slice(0, 5),
+        },
+      }
+    }
     const body: Record<string, unknown> = {
-      [PLATFORM_KEY[input.platform]]: { urls: input.urls },
       ...(input.tagIds?.length ? { tagIds: input.tagIds } : {}),
+    }
+    for (const [platform, urls] of groups) {
+      body[PLATFORM_KEY[platform]] = { urls }
     }
     const task = await ctx.backend.post<{ id: string; status: string }>(
       '/api/publicationStatistics/task/track-new',
       body,
     )
-    await ctx.logActivity(`追踪 ${input.platform} 的 ${input.urls.length} 条发布数据`, {
+    const platforms = [...groups.keys()]
+    await ctx.logActivity(`追踪 ${platforms.join(' / ')} 的 ${input.urls.length} 条发布数据`, {
       toolName: 'track_publications',
       input,
     })
@@ -55,9 +106,10 @@ export const trackPublications = defineTool({
         taskId: task.id,
         status: task.status,
         tracked: input.urls.length,
-        note: '追踪任务已创建，数据抓取在后台进行（通常几分钟内），之后可用 get_tracking_results 查看',
+        platforms,
+        note: '追踪任务已创建，数据抓取在后台进行（通常几分钟内），之后可直接询问"查看投放数据"',
       },
-      display: { kind: 'track-created', data: { taskId: task.id, platform: input.platform, urls: input.urls } },
+      display: { kind: 'track-created', data: { taskId: task.id, platform: platforms.join(' / '), urls: input.urls } },
     }
   },
 })

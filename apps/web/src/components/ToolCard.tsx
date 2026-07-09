@@ -1,8 +1,46 @@
-import { Component, useState, type ReactNode } from 'react'
-import { downloadBlob, downloadCommentsExcel } from '../api'
+import { Component, useEffect, useState, type ReactNode } from 'react'
+import { downloadBlob, downloadCommentsExcel, listProjects, rateKolInProject, type ProjectSummary } from '../api'
 import { safeHref } from '../safeHref'
 import type { ToolDisplay } from '../types'
 import MarkdownText from './MarkdownText'
+
+type SearchRequirementState = {
+  country: string
+  language: string
+  projectId: string
+  followerMin: string
+  followerMax: string
+  viewMin: string
+  viewMax: string
+  skinTone: string
+  gender: string
+  age: string
+  realPerson: boolean
+  hasContact: boolean
+  hasTikTokShop: boolean
+}
+
+const DEFAULT_REQUIREMENTS: SearchRequirementState = {
+  country: '全球',
+  language: '所有语言',
+  projectId: '',
+  followerMin: '1000',
+  followerMax: '',
+  viewMin: '1000',
+  viewMax: '',
+  skinTone: '不限',
+  gender: '不限',
+  age: '不限',
+  realPerson: false,
+  hasContact: false,
+  hasTikTokShop: false,
+}
+
+const COUNTRY_OPTIONS = ['全球', '美国', '英国', '加拿大', '澳大利亚', '新加坡', '马来西亚', '菲律宾', '印度尼西亚', '泰国', '越南', '日本', '韩国']
+const LANGUAGE_OPTIONS = ['所有语言', '英语', '中文', '西班牙语', '葡萄牙语', '法语', '德语', '日语', '韩语', '泰语', '越南语', '印尼语']
+const SKIN_TONE_OPTIONS = ['不限', '浅肤色', '中等肤色', '深肤色']
+const GENDER_OPTIONS = ['不限', '女性', '男性']
+const AGE_OPTIONS = ['不限', '18-24', '25-34', '35-44', '45+']
 
 /**
  * 卡片渲染兜底：任何一张卡片因脏数据抛错都不能拖垮整个对话界面
@@ -149,11 +187,36 @@ function DownloadLink({ url, label, fallback }: { url?: string; label: string; f
 
 function KolListCard({ data }: { data: any }) {
   const kols: any[] = data.kols ?? []
-  const [expanded, setExpanded] = useState(false)
-  const emailCount = kols.filter((k) => getEmail(k)).length
+  const [targetProject, setTargetProject] = useState<{ label: string; value: string } | null>(null)
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  const [projectsError, setProjectsError] = useState(false)
   const preview = kols.slice(0, 20)
+  const visibleEmailCount = preview.filter((k) => getEmail(k)).length
   const platform = normalizePlatform(data.platform ?? kols[0]?.platform)
   const platformName = platformLabel(platform)
+  const shownCount = preview.length
+  const currentProject = data.projectId ? projectTargetFromId(data.projectId, projects) : null
+  const projectTarget = targetProject ?? currentProject
+
+  useEffect(() => {
+    let alive = true
+    setProjectsLoading(true)
+    setProjectsError(false)
+    listProjects()
+      .then((list) => {
+        if (alive) setProjects(list)
+      })
+      .catch(() => {
+        if (alive) setProjectsError(true)
+      })
+      .finally(() => {
+        if (alive) setProjectsLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
   if (!kols.length) {
     return (
       <div className="card kol-card kol-results-card">
@@ -162,7 +225,7 @@ function KolListCard({ data }: { data: any }) {
             <div className="kol-results-title">
               <span className="status-dot" />
               搜索结果
-              {platformName && <span className="kol-title-badge">{platformName}</span>}
+              {platformName && <PlatformBadge platform={platform} />}
             </div>
             <div className="kol-summary">共找到 {fmt(data.total ?? 0)} 位达人，当前没有可展示结果</div>
           </div>
@@ -177,22 +240,36 @@ function KolListCard({ data }: { data: any }) {
     <div className="card kol-card kol-results-card">
       <div className="kol-results-head">
         <div className="kol-results-title-wrap">
-          <div className="kol-results-title">
-            <span className="status-dot" />
-            搜索结果
-            {platformName && <span className="kol-title-badge">{platformName}</span>}
-          </div>
           <div className="kol-filter-bar" aria-label="搜索摘要">
-            <span className="filter-chip active">{platformName || '全平台'}</span>
-            <span className="filter-chip">已返回 {fmt(data.returned ?? kols.length)}</span>
-            <span className="filter-chip">有邮箱 {emailCount ? fmt(emailCount) : '0'}</span>
+            <span className="filter-chip active">{platformName ? <PlatformBadge platform={platform} compact /> : '全平台'}</span>
+            <span className="filter-chip">展示 {fmt(shownCount)} 位</span>
+            <span className="filter-chip">{fmt(visibleEmailCount)} 位有邮箱</span>
             {data.source && <span className="filter-chip">种子 {String(data.source)}</span>}
             {data.mode && <span className="filter-chip">模式 {String(data.mode)}</span>}
           </div>
         </div>
         <div className="kol-actions">
-          <button className="ghost" disabled={!kols.length} onClick={() => setExpanded((v) => !v)}>
-            {expanded ? '收起明细' : '展开明细'}
+          <label className="project-select-wrap">
+            <span>项目</span>
+            <select
+              className="project-select"
+              value={projectTarget?.value ?? ''}
+              onChange={(event) => setTargetProject(projectTargetFromId(event.target.value, projects))}
+            >
+              {!projectTarget && <option value="">{projectsLoading ? '加载项目中' : '选择项目'}</option>}
+              {currentProject && !projects.some((project) => project.id === currentProject.value) && (
+                <option value={currentProject.value}>{currentProject.label}</option>
+              )}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.title}
+                </option>
+              ))}
+              {projectsError && !projects.length && <option value="">项目加载失败</option>}
+            </select>
+          </label>
+          <button className="ghost primary" disabled={!data.projectId} onClick={() => requestMoreKols(data, platformName || platform)}>
+            再找一批
           </button>
           <button className="ghost" disabled={!kols.length} onClick={() => downloadKolsCsv(kols)}>
             下载 CSV
@@ -200,70 +277,60 @@ function KolListCard({ data }: { data: any }) {
         </div>
       </div>
 
-      <div className="kol-platform-tabs" aria-label="平台结果">
-        <span className="kol-platform-tab active">
-          {platformIcon(platform)}
-          {platformName || '达人'}
-          <span>{fmt(data.total ?? kols.length)}</span>
-        </span>
-      </div>
-
-      <div className="kol-results-subhead">
-        <span>{platformName || '当前'} 当前页 {preview.length} 位达人</span>
-        <span>共找到 {fmt(data.total ?? kols.length)} 位达人</span>
-      </div>
-
       <div className="kol-table-shell" role="table" aria-label="达人搜索结果">
-        <div className="kol-table-toolbar">
-          <label className="kol-check-row">
-            <input type="checkbox" disabled />
-            <span>共 {preview.length} 位达人</span>
-          </label>
-        </div>
         {preview.map((k, i) => (
-          <KolItem kol={k} platform={data.platform} key={`${getAccount(k)}-${i}`} />
+          <KolItem
+            kol={k}
+            platform={data.platform}
+            projectTarget={projectTarget}
+            key={`${getAccount(k)}-${i}`}
+          />
         ))}
       </div>
 
       {kols.length > preview.length && (
-        <div className="kol-more">还有 {kols.length - preview.length} 个结果，下载 CSV 查看完整名单。</div>
-      )}
-
-      {expanded && (
-        <DataTable
-          columns={[
-            { header: '名称', cell: (k: any) => getName(k) },
-            { header: '账号', cell: (k: any) => getAccount(k) },
-            { header: '粉丝', cell: (k: any) => fmt(getFollowers(k)) },
-            { header: '地区', cell: (k: any) => getRegion(k) },
-            { header: '邮箱', cell: (k: any) => getEmail(k) || '-' },
-          ]}
-          rows={kols}
-          limit={100}
-          footer={kols.length > 100 && <div className="muted">表格仅预览前 100 条，下载 CSV 查看全部。</div>}
-        />
+        <div className="kol-more">已展示 {preview.length} / {kols.length}，下载 CSV 查看完整名单。</div>
       )}
     </div>
   )
 }
 
 /** 单个博主行：头像/昵称/主页链接/内容预览/关键指标，取值方式与 easykol-web 的 platform-adapters 一致 */
-function KolItem({ kol: k, platform }: { kol: any; platform?: string }) {
+function KolItem({
+  kol: k,
+  platform,
+  projectTarget,
+}: {
+  kol: any
+  platform?: string
+  projectTarget: { label: string; value: string } | null
+}) {
   const [avatarFailed, setAvatarFailed] = useState(false)
+  const [rating, setRating] = useState<'LIKE' | 'DISLIKE' | null>(null)
+  const [ratingBusy, setRatingBusy] = useState(false)
+  const [ratingError, setRatingError] = useState('')
   const p = normalizePlatform(k.platform ?? platform)
   const name = getDisplayName(k, p)
   const avatar = getAvatar(k, p)
   const profileUrl = safeHref(getProfileUrl(k, p))
   const region = getRegion(k)
-  const contentImages = getContentImages(k).slice(0, 3)
+  const contentImages = getContentImages(k, 4)
   const profileHref = safeHref(profileUrl)
+  const tags = getTags(k).slice(0, 4)
+  const description = getDescription(k)
+  const email = getEmail(k)
   return (
     <div className="kol-result-row" role="row">
-      <div className="kol-select-cell">
-        <input type="checkbox" disabled aria-label={`选择 ${name}`} />
-      </div>
       <div className="kol-profile-cell">
-        {avatar && !avatarFailed ? (
+        {profileHref ? (
+          <a className="kol-avatar-link" href={profileHref} target="_blank" rel="noreferrer" aria-label={`打开 ${name} 主页`}>
+            {avatar && !avatarFailed ? (
+              <img className="kol-avatar" src={avatar} alt={name} referrerPolicy="no-referrer" onError={() => setAvatarFailed(true)} />
+            ) : (
+              <div className="kol-avatar">{initialOf(name)}</div>
+            )}
+          </a>
+        ) : avatar && !avatarFailed ? (
           <img className="kol-avatar" src={avatar} alt={name} referrerPolicy="no-referrer" onError={() => setAvatarFailed(true)} />
         ) : (
           <div className="kol-avatar">{initialOf(name)}</div>
@@ -275,56 +342,111 @@ function KolItem({ kol: k, platform }: { kol: any; platform?: string }) {
             ) : (
               name
             )}
-            <span className="platform-mark" title={platformLabel(p)}>{platformIcon(p)}</span>
-            {getEmail(k) && <span className="mail-mark" title={getEmail(k)}>✉</span>}
           </div>
-          <div className="kol-account">
-            {getAccount(k)}
-            <span className="copy-mark" aria-hidden="true">□</span>
-          </div>
+          <div className="kol-account">{getAccount(k)}</div>
           <div className="kol-region">
             {flagOf(region) && <span className="kol-flag" title={region}>{flagOf(region)}</span>}
             {countryLabel(region)}
           </div>
-          <div className="kol-tags">
-            {getTags(k).slice(0, 2).map((tag, i) => (
-              <span key={`${tag}-${i}`}>{tag}</span>
-            ))}
-            {getTags(k).length > 2 && <span>...</span>}
+          <div className="kol-mini-metrics">
+            <span>{fmt(getFollowers(k))} 粉丝</span>
+            <span>{getSecondaryStatValue(k, p)} {secondaryShortLabel(p)}</span>
           </div>
         </div>
       </div>
-      <div className="kol-content-cell">
-        {contentImages.length > 0 ? (
-          contentImages.map((src, i) => (
-            <img key={`${src}-${i}`} src={src} alt="" referrerPolicy="no-referrer" />
-          ))
-        ) : (
-          <div className="kol-content-empty">暂无内容预览</div>
-        )}
+      <div className="kol-detail-cell">
+        <div className="kol-content-cell">
+          {contentImages.length > 0 ? (
+            contentImages.map((src, i) => (
+              <img key={`${src}-${i}`} src={src} alt="" referrerPolicy="no-referrer" />
+            ))
+          ) : (
+            <div className="kol-content-empty">暂无内容预览</div>
+          )}
+        </div>
+        <div className="kol-insight-cell">
+          {tags.length > 0 && (
+            <div className="kol-tags">
+              {tags.map((tag, i) => (
+                <span key={`${tag}-${i}`}>{tag}</span>
+              ))}
+            </div>
+          )}
+          <div className="kol-description">{description || '暂无简介'}</div>
+          {email && <div className="kol-email" title={email}>联系：{email}</div>}
+        </div>
       </div>
-      <MetricCell label="粉丝数" value={fmt(getFollowers(k))} />
-      <MetricCell label={secondaryLabel(p)} value={getSecondaryStatValue(k, p)} />
-      <MetricCell label="互动率" value={getEngagementRate(k)} />
-      <MetricCell label="最新视频" value={getLatestPublishDate(k)} />
       <div className="kol-row-actions">
-        {profileHref ? (
-          <a className="kol-action-link" href={profileHref} target="_blank" rel="noreferrer">主页</a>
-        ) : (
-          <span className="kol-action-link disabled">主页</span>
-        )}
-        <button className="kol-action-btn" disabled>找相似</button>
+        <button
+          className={ratingError ? 'kol-action-btn collect error' : rating === 'LIKE' ? 'kol-action-btn collect active' : 'kol-action-btn collect'}
+          disabled={ratingBusy || !projectTarget || !getKolId(k)}
+          onClick={() => saveKolRating(k, projectTarget, 'LIKE', setRating, setRatingBusy, setRatingError)}
+        >
+          {ratingBusy ? '保存中' : ratingError ? '保存失败' : rating === 'LIKE' ? '已收藏' : '收藏'}
+        </button>
+        <button
+          className={rating === 'DISLIKE' ? 'kol-action-btn reject active' : 'kol-action-btn reject'}
+          disabled={ratingBusy || !projectTarget || !getKolId(k)}
+          onClick={() => saveKolRating(k, projectTarget, 'DISLIKE', setRating, setRatingBusy, setRatingError)}
+        >
+          {ratingBusy ? '保存中' : rating === 'DISLIKE' ? '已标 No' : 'No'}
+        </button>
+        <button className="kol-action-btn" onClick={() => requestSimilarKols(k, p)}>
+          找相似
+        </button>
       </div>
     </div>
   )
 }
 
-function MetricCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="kol-metric-cell">
-      <div className="kol-metric-label">{label}</div>
-      <div className="kol-metric-value">{value}</div>
-    </div>
+function requestMoreKols(data: any, platformLabelText?: string) {
+  const projectId = data.projectId
+  if (!projectId) return
+  const platformText = platformLabelText ? `${platformLabelText} ` : ''
+  window.dispatchEvent(
+    new CustomEvent('ek-assistant:intent-search', {
+      detail: `基于当前搜索条件，在项目 ${projectId} 里继续换一批${platformText}达人；请使用 nextPage=true，排除已经展示过的结果。`,
+    }),
+  )
+}
+
+function projectTargetFromId(projectId: string, projects: ProjectSummary[]) {
+  if (!projectId) return null
+  const project = projects.find((item) => item.id === projectId)
+  return {
+    label: project?.title ?? '当前搜索项目',
+    value: projectId,
+  }
+}
+
+async function saveKolRating(
+  kol: any,
+  projectTarget: { label: string; value: string } | null,
+  attitude: 'LIKE' | 'DISLIKE',
+  setRating: (rating: 'LIKE' | 'DISLIKE') => void,
+  setRatingBusy: (busy: boolean) => void,
+  setRatingError: (error: string) => void,
+) {
+  const kolId = getKolId(kol)
+  if (!projectTarget || !kolId) return
+  setRatingBusy(true)
+  setRatingError('')
+  try {
+    await rateKolInProject({ projectId: projectTarget.value, kolId, attitude })
+    setRating(attitude)
+  } catch {
+    setRatingError('保存失败')
+  } finally {
+    setRatingBusy(false)
+  }
+}
+
+function requestSimilarKols(kol: any, platform: string) {
+  const source = getAccount(kol)
+  window.dispatchEvent(
+    new CustomEvent('ek-assistant:intent-search', {
+      detail: `帮我找和 ${source} 相似的 ${platformLabel(platform) || platform} 达人。`,
+    }),
   )
 }
 
@@ -666,25 +788,56 @@ function TrackingListCard({ data }: { data: any }) {
 
 function TrackCreatedCard({ data }: { data: any }) {
   const urls: string[] = data.urls ?? []
+  const platforms = String(data.platform ?? '')
+    .split('/')
+    .map((item) => normalizePlatform(item.trim()))
+    .filter(Boolean)
   return (
-    <div className="card">
-      <div className="card-title">✅ 追踪任务已创建</div>
-      <div className="muted">
-        平台 {data.platform} · {urls.length} 条链接 · 任务 {data.taskId}
-      </div>
-      <ul className="analysis-list">
-        {urls.slice(0, 20).map((u, i) => (
-          <li key={i}>
-            {safeHref(u) ? (
-              <a href={safeHref(u)} target="_blank" rel="noreferrer">{u}</a>
-            ) : (
-              u
+    <div className="card track-created-card">
+      <div className="track-created-head">
+        <div className="track-created-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        </div>
+        <div>
+          <div className="card-title track-created-title">已加入投放追踪</div>
+          <div className="track-created-subtitle">
+            {platforms.length > 0 && (
+              <span className="track-platforms">
+                {platforms.map((platform) => (
+                  <PlatformBadge key={platform} platform={platform} compact />
+                ))}
+              </span>
             )}
-          </li>
+            <span>{urls.length} 条内容</span>
+          </div>
+        </div>
+      </div>
+      <div className="track-link-list">
+        {urls.slice(0, 20).map((u, i) => (
+          <div key={i} className="track-link-row">
+            <span>内容 {i + 1}</span>
+            {safeHref(u) ? (
+              <a href={safeHref(u)} target="_blank" rel="noreferrer">打开链接</a>
+            ) : (
+              <span className="muted">链接不可打开</span>
+            )}
+          </div>
         ))}
-        {urls.length > 20 && <li className="muted">…还有 {urls.length - 20} 条</li>}
-      </ul>
-      <div className="muted">数据抓取在后台进行（通常几分钟内），之后可询问「投放数据」。</div>
+        {urls.length > 20 && <div className="muted">还有 {urls.length - 20} 条内容未展示。</div>}
+      </div>
+      <div className="track-created-footer">
+        <div className="track-created-note">数据正在后台抓取，通常几分钟后可以查看播放、点赞、评论和互动表现。</div>
+        <button
+          className="track-result-btn"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('ek-assistant:intent-search', { detail: '查看刚刚加入追踪的投放数据明细，包括播放、点赞、评论和互动表现' }))
+          }}
+        >
+          查看结果
+        </button>
+      </div>
     </div>
   )
 }
@@ -756,11 +909,32 @@ function CollectResultCard({ data }: { data: any }) {
 
 /** 智能搜索意图解析卡片：规范化标签 + 博主原文词（带库存命中量），在对话里确认后再搜索 */
 function SearchIntentCard({ data }: { data: any }) {
-  const tags: any[] = data.canonicalTags ?? []
-  const keywords: any[] = data.keywords ?? []
+  const tags: any[] = (data.canonicalTags ?? []).slice(0, 12)
+  const keywords: any[] = (data.keywords ?? []).slice(0, 12)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([])
+  const [requirements, setRequirements] = useState<SearchRequirementState>(DEFAULT_REQUIREMENTS)
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
   const selectedText = buildIntentSelectionText(selectedTags, selectedKeywords)
+  const baseSearchText = selectedText || '请按当前基础要求搜索达人。'
+  const searchText = appendSearchRequirements(baseSearchText, requirements, projects)
+
+  useEffect(() => {
+    let cancelled = false
+    listProjects()
+      .then((items) => {
+        if (cancelled) return
+        setProjects(items)
+        setRequirements((prev) => (prev.projectId || !items[0] ? prev : { ...prev, projectId: items[0].id }))
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <div className="card intent-card">
       <div className="card-title">
@@ -815,9 +989,160 @@ function SearchIntentCard({ data }: { data: any }) {
       {data.mustExclude?.length > 0 && (
         <div className="intent-exclude">排除词：{data.mustExclude.join('、')}</div>
       )}
+      <section className="requirements-panel intent-requirements" aria-labelledby="intent-requirements-title">
+        <div className="requirements-head">
+          <h2 id="intent-requirements-title">基础要求</h2>
+          <span>限制搜索范围，不决定内容匹配</span>
+        </div>
+        <div className="requirements-grid">
+          <label className="requirement-field">
+            <span>国家地区</span>
+            <select
+              value={requirements.country}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, country: e.target.value }))}
+            >
+              {COUNTRY_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="requirement-field">
+            <span>语言</span>
+            <select
+              value={requirements.language}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, language: e.target.value }))}
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="requirement-field">
+            <span>项目选择</span>
+            <select
+              value={requirements.projectId}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, projectId: e.target.value }))}
+            >
+              {projects.length === 0 && <option value="">Default Project</option>}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.title || 'Default Project'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="requirement-field range-field">
+            <span>粉丝数量</span>
+            <div className="range-inputs">
+              <input
+                inputMode="numeric"
+                value={requirements.followerMin}
+                onChange={(e) => setRequirements((prev) => ({ ...prev, followerMin: numbersOnly(e.target.value) }))}
+                aria-label="粉丝数量最小值"
+              />
+              <span aria-hidden="true">→</span>
+              <input
+                inputMode="numeric"
+                value={requirements.followerMax}
+                placeholder="∞"
+                onChange={(e) => setRequirements((prev) => ({ ...prev, followerMax: numbersOnly(e.target.value) }))}
+                aria-label="粉丝数量最大值"
+              />
+            </div>
+          </label>
+          <label className="requirement-field range-field">
+            <span>平均播放量</span>
+            <div className="range-inputs">
+              <input
+                inputMode="numeric"
+                value={requirements.viewMin}
+                onChange={(e) => setRequirements((prev) => ({ ...prev, viewMin: numbersOnly(e.target.value) }))}
+                aria-label="平均播放量最小值"
+              />
+              <span aria-hidden="true">→</span>
+              <input
+                inputMode="numeric"
+                value={requirements.viewMax}
+                placeholder="∞"
+                onChange={(e) => setRequirements((prev) => ({ ...prev, viewMax: numbersOnly(e.target.value) }))}
+                aria-label="平均播放量最大值"
+              />
+            </div>
+          </label>
+          <label className="requirement-field">
+            <span>肤色</span>
+            <select
+              value={requirements.skinTone}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, skinTone: e.target.value }))}
+            >
+              {SKIN_TONE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="requirement-field">
+            <span>性别</span>
+            <select
+              value={requirements.gender}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, gender: e.target.value }))}
+            >
+              {GENDER_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="requirement-field">
+            <span>年龄</span>
+            <select
+              value={requirements.age}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, age: e.target.value }))}
+            >
+              {AGE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="requirements-checks">
+          <label>
+            <input
+              type="checkbox"
+              checked={requirements.realPerson}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, realPerson: e.target.checked }))}
+            />
+            <span>真人出镜</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={requirements.hasContact}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, hasContact: e.target.checked }))}
+            />
+            <span>存在联系方式</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={requirements.hasTikTokShop}
+              onChange={(e) => setRequirements((prev) => ({ ...prev, hasTikTokShop: e.target.checked }))}
+            />
+            <span>开通了 TK 橱窗</span>
+          </label>
+        </div>
+      </section>
       <div className="intent-selection-bar">
         <div className="intent-selection-text">
-          {selectedText || '选择标签或关键词后，我会按这些条件继续搜索。'}
+          {selectedText || '未选择标签或关键词，将只按基础要求继续搜索。'}
         </div>
         <div className="intent-selection-actions">
           <button
@@ -832,10 +1157,8 @@ function SearchIntentCard({ data }: { data: any }) {
           </button>
           <button
             className="intent-action primary"
-            disabled={!selectedText}
             onClick={() => {
-              if (!selectedText) return
-              window.dispatchEvent(new CustomEvent('ek-assistant:intent-search', { detail: selectedText }))
+              window.dispatchEvent(new CustomEvent('ek-assistant:intent-search', { detail: searchText }))
             }}
           >
             搜索
@@ -882,6 +1205,45 @@ function buildIntentSelectionText(tags: string[], keywords: string[]): string {
   if (tags.length) parts.push(`保留达人标签：${tags.join('、')}`)
   if (keywords.length) parts.push(`保留关键词：${keywords.join('、')}`)
   return parts.length ? `${parts.join('；')}，请按这些条件搜索达人。` : ''
+}
+
+function numbersOnly(value: string): string {
+  return value.replace(/[^\d]/g, '')
+}
+
+function appendSearchRequirements(
+  message: string,
+  requirements: SearchRequirementState,
+  projects: ProjectSummary[],
+): string {
+  if (!message || message.includes('搜索范围限制（只用于筛选，不用于内容匹配）')) return message
+  const projectTitle =
+    projects.find((project) => project.id === requirements.projectId)?.title ||
+    (requirements.projectId ? requirements.projectId : 'Default Project')
+  const flags = [
+    requirements.realPerson ? '真人出镜' : '',
+    requirements.hasContact ? '存在联系方式' : '',
+    requirements.hasTikTokShop ? '开通了 TK 橱窗' : '',
+  ].filter(Boolean)
+  const lines = [
+    '搜索范围限制（只用于筛选，不用于内容匹配）：',
+    `- 国家地区：${requirements.country}`,
+    `- 语言：${requirements.language}`,
+    `- 项目选择：${projectTitle}`,
+    `- 粉丝数量：${formatRange(requirements.followerMin, requirements.followerMax)}`,
+    `- 平均播放量：${formatRange(requirements.viewMin, requirements.viewMax)}`,
+    `- 肤色：${requirements.skinTone}`,
+    `- 性别：${requirements.gender}`,
+    `- 年龄：${requirements.age}`,
+  ]
+  if (flags.length) lines.push(`- 额外要求：${flags.join('、')}`)
+  return `${message}\n\n${lines.join('\n')}`
+}
+
+function formatRange(min: string, max: string): string {
+  const start = min.trim() || '不限'
+  const end = max.trim() || '不限'
+  return `${start} 至 ${end}`
 }
 
 function ExportResultCard({ data }: { data: any }) {
@@ -951,55 +1313,299 @@ function CompetitorPostsCard({ data }: { data: any }) {
   )
 }
 
-/** 受众画像卡片：画像/地区/假粉雷达按对象泛化渲染成分区 stat */
+/** 受众画像卡片：用业务标签展示关键判断，避免把后端字段名直接暴露给用户 */
 function AudienceAnalysisCard({ data }: { data: any }) {
+  const portrait = data.userPortraitResult ?? {}
+  const region = data.regionAnalysisResult ?? {}
+  const fake = data.fakeRadarData ?? {}
+  const range = data.dataRangeStats ?? {}
+  const ageItems = [
+    { key: 'age18to25', label: '18-25 岁', value: readNumber(portrait, ['age.age18to25', 'age18to25']) },
+    { key: 'age25to45', label: '25-45 岁', value: readNumber(portrait, ['age.age25to45', 'age25to45']) },
+    { key: 'above45', label: '45 岁以上', value: readNumber(portrait, ['age.above45', 'above45']) },
+    { key: 'under18', label: '18 岁以下', value: readNumber(portrait, ['age.under18', 'under18']) },
+  ].filter((item) => item.value != null)
+  const genderItems = [
+    { key: 'female', label: '女性', value: readNumber(portrait, ['gender.female', 'female']) },
+    { key: 'male', label: '男性', value: readNumber(portrait, ['gender.male', 'male']) },
+  ].filter((item) => item.value != null)
+  const topAge = [...ageItems].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
+  const topGender = [...genderItems].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
+  const fakeRate = readNumber(fake, ['suspectedFakeRate', 'fakeRate'])
+  const fakeTone = fakeRate == null ? 'neutral' : fakeRate >= 40 ? 'danger' : fakeRate >= 20 ? 'warning' : 'success'
+  const regionTotal = readNumber(region, ['total', 'countryCount', 'regionCount'])
+  const regionItems = extractRegionItems(region)
+  const sampleUsers = readNumber(fake, ['totalUserCount'])
+    ?? readNumber(range, ['commentUsersCount', 'totalUserCount'])
+  const sampleVideos = readNumber(range, ['videosAnalyzed'])
+    ?? readNumber(fake, ['videoCount'])
+  const fakeFacts = [
+    { label: '分析视频', value: fmt(readNumber(fake, ['videoCount'])) },
+    { label: '分析用户', value: fmt(readNumber(fake, ['totalUserCount'])) },
+    { label: '疑似假号', value: fmt(readNumber(fake, ['suspectedFakeCount'])) },
+    { label: '评论总数', value: fmt(readNumber(fake, ['totalCommentCount'])) },
+    { label: '平均评论用户', value: fmtDecimal(readNumber(fake, ['avgCommentUserCount'])) },
+    { label: '无地区用户', value: fmt(readNumber(fake, ['userWithoutCountryCount'])) },
+    { label: '无地区用户占比', value: fmtPercent(readNumber(fake, ['userWithoutCountryRate'])) },
+  ].filter((item) => item.value !== '-')
+  const rangeFacts = [
+    { label: '采样倍数', value: fmt(readNumber(range, ['multiplier'])) },
+    { label: '已分析视频', value: fmt(readNumber(range, ['videosAnalyzed'])) },
+    { label: '评论用户', value: fmt(readNumber(range, ['commentUsersCount'])) },
+  ].filter((item) => item.value !== '-')
+
   return (
-    <div className="card">
-      <div className="card-title">
-        受众画像（{data.source} · {data.platform}）
+    <div className="card audience-card">
+      <div className="audience-head">
+        <div>
+          <div className="card-title audience-title">受众分析</div>
+          <div className="audience-subtitle">
+            <span>{data.source ? `@${data.source}` : '达人账号'}</span>
+            {data.platform && <PlatformBadge platform={normalizePlatform(data.platform)} compact />}
+          </div>
+        </div>
         <DownloadLink url={data.exportUrl} label="下载 Excel" />
       </div>
-      <AudienceSection title="👥 用户画像" obj={data.userPortraitResult} />
-      <AudienceSection title="🌍 地区分布" obj={data.regionAnalysisResult} />
-      <AudienceSection title="🛡 虚假粉丝雷达" obj={data.fakeRadarData} />
-      <AudienceSection title="📊 采集范围" obj={data.dataRangeStats} />
-      {data.updatedAt && <div className="muted">分析时间：{fmtDate(data.updatedAt)}</div>}
+
+      <div className="audience-highlight-grid">
+        <AudienceMetric value={topAge ? `${fmtPercent(topAge.value)}` : '-'} label={topAge ? `核心年龄：${topAge.label}` : '核心年龄'} />
+        <AudienceMetric value={topGender ? `${fmtPercent(topGender.value)}` : '-'} label={topGender ? `${topGender.label}占比` : '性别占比'} />
+        <AudienceMetric value={fakeRate != null ? `${fmtPercent(fakeRate)}` : '-'} label="疑似假粉率" tone={fakeTone} />
+        <AudienceMetric value={sampleUsers != null ? fmt(sampleUsers) : '-'} label="分析用户样本" />
+      </div>
+
+      <div className="audience-panel-grid">
+        <div className="audience-panel">
+          <div className="audience-panel-title">用户画像</div>
+          <AudienceBars items={ageItems} />
+          <AudienceBars items={genderItems} />
+        </div>
+        <div className="audience-panel">
+          <div className="audience-panel-title">地区分布</div>
+          <div className="audience-region-total">{regionTotal != null ? fmt(regionTotal) : '-'}</div>
+          <div className="audience-region-label">覆盖地区</div>
+          {regionItems.length > 0 && (
+            <div className="audience-region-list">
+              {regionItems.slice(0, 12).map((item) => (
+                <span key={item.label}>{item.label}{item.value != null ? ` ${fmtPercent(item.value)}` : ''}</span>
+              ))}
+              {regionItems.length > 12 && <span>还有 {regionItems.length - 12} 个地区</span>}
+            </div>
+          )}
+        </div>
+        <div className="audience-panel">
+          <div className="audience-panel-title">风险雷达</div>
+          <div className={`audience-risk ${fakeTone}`}>
+            {fakeRate != null ? `${fmtPercent(fakeRate)} 疑似假粉` : '暂无假粉数据'}
+          </div>
+          <AudienceFactGrid items={fakeFacts} />
+        </div>
+        <div className="audience-panel">
+          <div className="audience-panel-title">采集范围</div>
+          <AudienceFactGrid items={rangeFacts} />
+          {data.updatedAt && <div className="audience-updated">分析时间：{fmtDate(data.updatedAt)}</div>}
+        </div>
+      </div>
     </div>
   )
 }
 
-function AudienceSection({ title, obj }: { title: string; obj: any }) {
-  if (!obj || typeof obj !== 'object') return null
-  const flat = flattenEntries(obj)
-  if (!flat.length) return null
+function AudienceMetric({
+  value,
+  label,
+  tone = 'neutral',
+}: {
+  value: ReactNode
+  label: ReactNode
+  tone?: 'neutral' | 'success' | 'warning' | 'danger'
+}) {
   return (
-    <div className="analysis-section">
-      <div className="analysis-section-title">{title}</div>
-      <StatGrid items={flat.slice(0, 12).map(([k, v]) => ({ key: k, value: formatStatValue(v), label: k }))} />
+    <div className={`audience-metric ${tone}`}>
+      <div className="audience-metric-value">{value}</div>
+      <div className="audience-metric-label">{label}</div>
     </div>
   )
 }
 
-/** 把嵌套一层的对象压平成 [label, value]，只保留可直接展示的标量 */
-function flattenEntries(obj: Record<string, any>): [string, unknown][] {
-  const out: [string, unknown][] = []
-  for (const [k, v] of Object.entries(obj)) {
-    if (v == null) continue
-    if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') {
-      out.push([k, v])
-    } else if (typeof v === 'object' && !Array.isArray(v)) {
-      for (const [k2, v2] of Object.entries(v)) {
-        if (typeof v2 === 'number' || typeof v2 === 'string') out.push([`${k}.${k2}`, v2])
-      }
-    }
-  }
-  return out
+function AudienceBars({ items }: { items: { key: string; label: string; value: number | null }[] }) {
+  if (!items.length) return <div className="audience-empty">暂无数据</div>
+  return (
+    <div className="audience-bars">
+      {items.map((item) => (
+        <div key={item.key} className="audience-bar-row">
+          <span>{item.label}</span>
+          <div className="audience-bar-track">
+            <div className="audience-bar-fill" style={{ width: `${clampPercent(item.value)}%` }} />
+          </div>
+          <strong>{fmtPercent(item.value)}</strong>
+        </div>
+      ))}
+    </div>
+  )
 }
 
-function formatStatValue(v: unknown): string {
-  if (typeof v === 'number') return Number.isInteger(v) ? fmt(v) : v.toFixed(2)
-  if (typeof v === 'boolean') return v ? '是' : '否'
-  return String(v)
+function AudienceFactGrid({ items }: { items: { label: string; value: string }[] }) {
+  if (!items.length) return <div className="audience-empty">暂无数据</div>
+  return (
+    <div className="audience-fact-grid">
+      {items.map((item) => (
+        <div key={item.label} className="audience-fact">
+          <span>{item.label}</span>
+          <strong>{item.value}</strong>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function readNumber(obj: any, paths: string[]): number | null {
+  for (const path of paths) {
+    const directValue = obj?.[path]
+    const nestedValue = path.split('.').reduce<any>((current, part) => current?.[part], obj)
+    const parsed = parseNumericValue(directValue ?? nestedValue)
+    if (parsed != null) return parsed
+  }
+  return null
+}
+
+function parseNumericValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().replace(/,/g, '').replace(/%$/, '')
+  if (!normalized || !Number.isFinite(Number(normalized))) return null
+  return Number(normalized)
+}
+
+function fmtPercent(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '-'
+  const normalized = value > 0 && value <= 1 ? value * 100 : value
+  return `${Number.isInteger(normalized) ? normalized : normalized.toFixed(1)}%`
+}
+
+function fmtDecimal(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '-'
+  return Number.isInteger(value) ? fmt(value) : value.toFixed(2)
+}
+
+function clampPercent(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 0
+  const normalized = value > 0 && value <= 1 ? value * 100 : value
+  return Math.max(0, Math.min(100, normalized))
+}
+
+function extractRegionItems(region: any): { label: string; value?: number }[] {
+  const found: { label: string; value?: number }[] = []
+  collectRegionItems(region, found)
+  const seen = new Set<string>()
+  return found
+    .filter((item) => {
+      const key = item.label.toLowerCase()
+      if (!item.label || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+}
+
+function collectRegionItems(value: any, out: { label: string; value?: number }[], parentKey = ''): void {
+  if (!value || typeof value !== 'object') return
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!item || typeof item !== 'object') continue
+      const label = regionLabelFromObject(item)
+      const amount = regionValueFromObject(item)
+      if (label && amount != null) out.push({ label, value: amount })
+      collectRegionItems(item, out, parentKey)
+    }
+    return
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (isIgnoredRegionKey(key)) continue
+    const amount = parseNumericValue(child)
+    if (amount != null && isRegionDistributionKey(key, parentKey)) {
+      out.push({ label: displayRegionLabel(key), value: amount })
+      continue
+    }
+    if (child && typeof child === 'object') collectRegionItems(child, out, key)
+  }
+}
+
+function regionLabelFromObject(item: Record<string, unknown>): string {
+  const raw =
+    item.countryName ??
+    item.country ??
+    item.countryCode ??
+    item.country_code ??
+    item.regionName ??
+    item.region ??
+    item.regionCode ??
+    item.code ??
+    item.name ??
+    item.label
+  return typeof raw === 'string' && raw.trim() ? displayRegionLabel(raw.trim()) : ''
+}
+
+function regionValueFromObject(item: Record<string, unknown>): number | null {
+  return parseNumericValue(
+    item.rate ??
+      item.ratio ??
+      item.percent ??
+      item.percentage ??
+      item.proportion ??
+      item.share ??
+      item.value ??
+      item.count,
+  )
+}
+
+function isIgnoredRegionKey(key: string): boolean {
+  return [
+    'total',
+    'count',
+    'countryCount',
+    'regionCount',
+    'userWithoutCountryCount',
+    'userWithoutCountryRate',
+  ].includes(key)
+}
+
+function isRegionDistributionKey(key: string, parentKey: string): boolean {
+  const combined = `${parentKey}.${key}`.toLowerCase()
+  if (combined.includes('age') || combined.includes('gender') || combined.includes('fake')) return false
+  if (combined.includes('country') || combined.includes('region') || combined.includes('area')) return true
+  return /^[A-Z]{2,3}$/.test(key) || /^T[1-3]$/i.test(key)
+}
+
+function displayRegionLabel(label: string): string {
+  const code = label.toUpperCase()
+  const names: Record<string, string> = {
+    US: '美国',
+    BR: '巴西',
+    IN: '印度',
+    ID: '印度尼西亚',
+    IT: '意大利',
+    NG: '尼日利亚',
+    JP: '日本',
+    KR: '韩国',
+    GB: '英国',
+    UK: '英国',
+    CA: '加拿大',
+    AU: '澳大利亚',
+    DE: '德国',
+    FR: '法国',
+    ES: '西班牙',
+    MX: '墨西哥',
+    PH: '菲律宾',
+    TH: '泰国',
+    VN: '越南',
+    MY: '马来西亚',
+    SG: '新加坡',
+    T1: 'T1 地区',
+    T2: 'T2 地区',
+    T3: 'T3 地区',
+  }
+  return names[code] ? `${names[code]} (${code})` : label
 }
 
 const FAKE_RESULT_LABELS: Record<string, string> = {
@@ -1109,11 +1715,28 @@ function platformLabel(platform: string): string {
   return ''
 }
 
-function platformIcon(platform: string): string {
-  if (platform === 'TIKTOK') return '♪'
-  if (platform === 'INSTAGRAM') return '◎'
-  if (platform === 'YOUTUBE') return '▶'
-  return '人'
+function PlatformBadge({ platform, compact = false }: { platform: string; compact?: boolean }) {
+  const normalized = normalizePlatform(platform)
+  const label = platformLabel(normalized) || normalized
+  return (
+    <span className={`platform-badge ${normalized.toLowerCase()} ${compact ? 'compact' : ''}`}>
+      <PlatformIcon platform={normalized} />
+      <span>{label}</span>
+    </span>
+  )
+}
+
+function PlatformIcon({ platform }: { platform: string }) {
+  const src =
+    platform === 'INSTAGRAM'
+      ? '/platform-icons/instagram.png'
+      : platform === 'YOUTUBE'
+        ? '/platform-icons/youtube.png'
+        : platform === 'TIKTOK'
+          ? '/platform-icons/tiktok.png'
+          : ''
+  if (src) return <img src={src} alt="" aria-hidden="true" />
+  return <span className="platform-badge-fallback" aria-hidden="true">人</span>
 }
 
 /** 昵称优先级与 easykol-web platform-adapters 一致 */
@@ -1177,6 +1800,12 @@ function secondaryLabel(platform: string): string {
   return '平均播放'
 }
 
+function secondaryShortLabel(platform: string): string {
+  if (platform === 'INSTAGRAM') return '均赞'
+  if (platform === 'YOUTUBE') return '均观看'
+  return '均播'
+}
+
 function getSecondaryStatValue(k: any, platform: string): string {
   const value =
     platform === 'INSTAGRAM'
@@ -1219,7 +1848,7 @@ function fmtShortDate(value: unknown): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function getContentImages(k: any): string[] {
+function getContentImages(k: any, limit = 3): string[] {
   const lists = [
     k.posts,
     k.postList,
@@ -1239,10 +1868,23 @@ function getContentImages(k: any): string[] {
     for (const item of list) {
       const src = pickImageUrl(item)
       if (src && !urls.includes(src)) urls.push(src)
-      if (urls.length >= 3) return urls
+      if (urls.length >= limit) return urls
     }
   }
   return urls
+}
+
+function getDescription(k: any): string {
+  const value =
+    k.description ??
+    k.signature ??
+    k.bio ??
+    k.introduction ??
+    nestedUser(k)?.description ??
+    nestedUser(k)?.signature ??
+    nestedUser(k)?.bio ??
+    ''
+  return String(value || '').trim()
 }
 
 function pickImageUrl(item: any): string {
@@ -1273,8 +1915,6 @@ function getTags(k: any): string[] {
     if (!Array.isArray(item)) return []
     return item.map((v) => (typeof v === 'string' ? v : v?.name ?? v?.label)).filter(Boolean)
   })
-  const desc = typeof k.description === 'string' ? k.description : ''
-  if (!values.length && desc) values.push(...desc.split(/[，,/#\s]+/).filter(Boolean).slice(0, 2))
   return [...new Set(values.map((v) => String(v)).filter(Boolean))]
 }
 
@@ -1303,6 +1943,10 @@ function flagOf(region: string): string {
 
 function getAccount(k: any): string {
   return k.platformAccount ?? k.account ?? k.uniqueId ?? k.authorUniqueId ?? '-'
+}
+
+function getKolId(k: any): string {
+  return k.kolId ?? k.id ?? nestedUser(k)?.kolId ?? nestedUser(k)?.id ?? ''
 }
 
 /** similars 等接口返回 kolInfo，粉丝/地区在嵌套的平台对象里 */

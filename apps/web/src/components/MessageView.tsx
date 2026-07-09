@@ -19,7 +19,7 @@ export default function MessageView({
 }) {
   if (message.role === 'assistant') {
     const hasStructuredDisplay = message.activities.some((a) =>
-      ['kol-list', 'search-intent'].includes(a.display?.kind ?? ''),
+      ['kol-list', 'search-intent', 'audience-analysis', 'track-created'].includes(a.display?.kind ?? ''),
     )
     const showText = Boolean(message.text && !hasStructuredDisplay)
     return (
@@ -29,7 +29,12 @@ export default function MessageView({
         </div>
         <div className="turn-body">
           {(message.activities.length > 0 || active) && (
-            <StepsPanel message={message} active={active} elapsedSeconds={elapsedSeconds} dockedKinds={dockedKinds} />
+            <StepsPanel
+              message={message}
+              active={active}
+              elapsedSeconds={elapsedSeconds}
+              dockedKinds={dockedKinds}
+            />
           )}
 
           {showText && (
@@ -115,25 +120,29 @@ function StepsPanel({
   elapsedSeconds: number
   dockedKinds: string[]
 }) {
-  const hasDisplay = message.activities.some((a) => a.display)
-  const [expanded, setExpanded] = useState(active || hasDisplay)
+  const hasInlineDisplay = message.activities.some((a) => a.display && !dockedKinds.includes(a.display.kind))
+  const [expanded, setExpanded] = useState(active || hasInlineDisplay)
   const wasActive = useRef(active)
   useEffect(() => {
-    if (wasActive.current && !active) setExpanded(message.activities.some((a) => a.display))
+    if (wasActive.current && !active) {
+      setExpanded(message.activities.some((a) => a.display && !dockedKinds.includes(a.display.kind)))
+    }
     wasActive.current = active
-  }, [active, message.activities])
+  }, [active, dockedKinds, message.activities])
 
   const seconds = active ? elapsedSeconds : message.processedSeconds
-  const stepCount = message.activities.length
   const showBody = active || expanded
+  const summaryText = active
+    ? '正在处理你的请求'
+    : message.activities.length
+      ? toolStatusText(message.activities[message.activities.length - 1].toolName, 'done')
+      : '已完成'
 
   return (
     <div className={`steps-panel ${active ? 'active' : ''} ${showBody ? '' : 'collapsed'}`}>
       <button className="steps-head" onClick={() => setExpanded((v) => !v)} disabled={active}>
         <span className="steps-title">
-          {active
-            ? '任务进行中'
-            : `已完成${stepCount ? ` ${stepCount} 步` : ''}`}
+          {summaryText}
           {seconds ? ` · ${seconds}s` : ''}
         </span>
         {!active && (
@@ -192,7 +201,9 @@ function StepsPanel({
 
 function toolStatusText(name: string, status: 'running' | 'done'): string {
   const action = toolAction(name)
-  return status === 'running' ? `正在${action}` : `已返回：${action}`
+  if (status === 'running') return `正在${action}`
+  if (action.startsWith('生成')) return `已${action}`
+  return `已完成：${action}`
 }
 
 function formatElapsed(ms: number): string {

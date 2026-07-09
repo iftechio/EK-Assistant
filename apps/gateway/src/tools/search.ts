@@ -5,6 +5,15 @@ import { compactKol, ensureProject, requireParam } from './helpers.js'
 
 const DISCOVERY_PLATFORMS = ['TIKTOK', 'YOUTUBE', 'INSTAGRAM'] as const
 
+/** 模型经常在 sentence 里已经点名平台却漏传 platform 参数；从 sentence 兜底推断一次，减少一轮报错重试 */
+function inferPlatform(sentence: string): (typeof DISCOVERY_PLATFORMS)[number] | undefined {
+  const s = sentence.toLowerCase()
+  if (s.includes('tiktok')) return 'TIKTOK'
+  if (s.includes('youtube')) return 'YOUTUBE'
+  if (s.includes('instagram')) return 'INSTAGRAM'
+  return undefined
+}
+
 interface TaskDetail {
   id: string
   status: string
@@ -90,7 +99,7 @@ const searchKolsInput = z.object({
       tone: z.string().optional().describe('内容调性/风格标签代码'),
     })
     .optional()
-    .describe('垂类/调性要求'),
+    .describe('垂类/调性要求，是对象不是字符串，例如 {"main": "beauty"}'),
   hasContactInfo: z.boolean().optional().describe('是否要求有邮箱/联系方式'),
   lastPublishedDays: z.number().int().min(1).max(3650).optional().describe('最近 N 天内发布过内容'),
   useVisualScreening: z.boolean().optional().describe('是否启用 AI 视觉精筛'),
@@ -152,7 +161,7 @@ export function buildSearchBody(input: SearchKolsInput, projectId: string): Reco
 export const searchKols = defineTool({
   name: 'search_kols',
   description:
-    '智能搜索 KOL 达人。把用户的硬性条件尽量映射为结构化参数：粉丝数→followers、平均播放→averageViews（TikTok/YouTube）、平均点赞→averageLikes（Instagram）、邮箱/联系方式→hasContactInfo、最近活跃→lastPublishedDays、真人出镜/口播/垂类/情侣/亲子/宠物/TikTok Shop/Amazon partner→attributeTags、性别/年龄/族裔→demographics、垂类/调性→category、用户要 N 个名单→maxResults；剩余主观描述放 kolDescription。一次只搜一个平台（platform 单值，取 TIKTOK/YOUTUBE/INSTAGRAM，多平台拆成多次调用）。消耗配额（TikTok/YouTube 每批约10分，Instagram 每批约20分）。翻页时传 nextPage=true 和上次的 projectId。',
+    '智能搜索 KOL 达人。把用户的硬性条件尽量映射为结构化参数：粉丝数→followers、平均播放→averageViews（TikTok/YouTube）、平均点赞→averageLikes（Instagram）、邮箱/联系方式→hasContactInfo、最近活跃→lastPublishedDays、真人出镜/口播/垂类/情侣/亲子/宠物/TikTok Shop/Amazon partner→attributeTags、性别/年龄/族裔→demographics、垂类/调性→category（对象 {main/sub/tone}，不是字符串）、用户要 N 个名单→maxResults；剩余主观描述放 kolDescription。一次只搜一个平台（platform 单值，取 TIKTOK/YOUTUBE/INSTAGRAM，多平台拆成多次调用）。消耗配额（TikTok/YouTube 每批约10分，Instagram 每批约20分）。翻页时传 nextPage=true 和上次的 projectId。',
   permission: 'quota',
   inputSchema: searchKolsInput,
   estimateQuota: (input) =>
@@ -342,21 +351,32 @@ export const parseSearchIntent = defineTool({
   inputSchema: z.object({
     action: z.enum(['parse', 'more_words']).optional().describe('默认 parse'),
     sentence: z.string().min(1).max(500).describe('用户对目标达人的一句话描述'),
-    platform: z.enum(DISCOVERY_PLATFORMS),
+    platform: z
+      .enum(DISCOVERY_PLATFORMS)
+      .optional()
+      .describe('目标平台；不传时会尝试从 sentence 里的平台名（TikTok/YouTube/Instagram）兜底推断'),
     topN: z.number().int().min(1).max(50).optional().describe('返回标签数，默认 12'),
     excludeWords: z.array(z.string()).optional().describe('more_words 时传已展示过的词，避免重复'),
   }),
   summarize: (input) =>
     input.action === 'more_words' ? '推荐更多博主原文词' : `解析搜索意图：${input.sentence.slice(0, 50)}`,
   execute: async (input, ctx) => {
+    const platform = input.platform ?? inferPlatform(input.sentence)
+    if (!platform) {
+      return {
+        forModel: {
+          error: '缺少 platform 参数，且无法从 sentence 中识别出 TikTok/YouTube/Instagram，请先向用户确认目标平台后带上 platform 重新调用。',
+        },
+      }
+    }
     if (input.action === 'more_words') {
       const r = await ctx.backend.post<{ keywords: { name: string; count: number }[] }>(
         '/api/intelligent-search/more-words',
-        { sentence: input.sentence, platform: input.platform, exclude: input.excludeWords },
+        { sentence: input.sentence, platform, exclude: input.excludeWords },
       )
       return {
         forModel: { keywords: r.keywords ?? [] },
-        display: { kind: 'search-intent', data: { platform: input.platform, keywords: r.keywords ?? [] } },
+        display: { kind: 'search-intent', data: { platform, keywords: r.keywords ?? [] } },
       }
     }
     const r = await ctx.backend.post<{
@@ -368,7 +388,7 @@ export const parseSearchIntent = defineTool({
       parseDegraded: boolean
     }>('/api/intelligent-search/parse', {
       sentence: input.sentence,
-      platform: input.platform,
+      platform,
       topN: input.topN,
     })
     return {
@@ -384,7 +404,7 @@ export const parseSearchIntent = defineTool({
         kind: 'search-intent',
         data: {
           sentence: input.sentence,
-          platform: input.platform,
+          platform,
           expandedQuery: r.intent?.expandedQuery,
           canonicalTags: r.canonicalTags ?? [],
           keywords: r.keywords ?? [],

@@ -76,11 +76,8 @@ export async function executeWithGate(
       return result
     }
 
-    case 'write_logged': {
-      const result = await runTool(tool, input, ctx)
-      await ctx.logActivity(summary, { toolName: tool.name, input })
-      return result
-    }
+    case 'write_logged':
+      return runTool(tool, input, ctx)
 
     case 'confirm':
       return requireConfirmation('高风险不可逆操作（如真实发送邮件），必须由用户显式确认')
