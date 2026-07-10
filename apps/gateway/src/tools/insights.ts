@@ -122,9 +122,11 @@ export const detectFakeFollowers = defineTool({
     }
     const taskId = created.task.id
     if (!TERMINAL.has(created.task.status)) {
+      // audience-fake/post-fake 任务落在 similarChannelTask 表，要走 /api/tasks/result/:id 查询；
+      // 通用 /api/tasks/status/:id 只查 task 表（RECOMMAND_TAG/COMPETITOR_TRACK 用），查这类任务恒是 404
       await ctx.backend.callBackendTask<{ id: string }, { status: string }>({
         create: async () => ({ id: taskId }),
-        poll: (client, t) => client.get<{ status: string }>(`/api/tasks/status/${t.id}`),
+        poll: (client, t) => client.get<{ status: string }>(`/api/tasks/result/${t.id}`),
         isDone: (p) => TERMINAL.has(p.status),
         timeoutMs: 600_000,
       })

@@ -1320,25 +1320,19 @@ function AudienceAnalysisCard({ data }: { data: any }) {
   const fake = data.fakeRadarData ?? {}
   const range = data.dataRangeStats ?? {}
   const ageItems = [
-    { key: 'age18to25', label: '18-25 岁', value: readNumber(portrait, ['age.age18to25', 'age18to25']) },
-    { key: 'age25to45', label: '25-45 岁', value: readNumber(portrait, ['age.age25to45', 'age25to45']) },
-    { key: 'above45', label: '45 岁以上', value: readNumber(portrait, ['age.above45', 'above45']) },
-    { key: 'under18', label: '18 岁以下', value: readNumber(portrait, ['age.under18', 'under18']) },
+    { key: 'age18to25', label: '18-25 岁', value: readPercent(portrait, ['age.age18to25', 'age18to25']) },
+    { key: 'age25to45', label: '25-45 岁', value: readPercent(portrait, ['age.age25to45', 'age25to45']) },
+    { key: 'above45', label: '45 岁以上', value: readPercent(portrait, ['age.above45', 'above45']) },
+    { key: 'under18', label: '18 岁以下', value: readPercent(portrait, ['age.under18', 'under18']) },
   ].filter((item) => item.value != null)
   const genderItems = [
-    { key: 'female', label: '女性', value: readNumber(portrait, ['gender.female', 'female']) },
-    { key: 'male', label: '男性', value: readNumber(portrait, ['gender.male', 'male']) },
+    { key: 'female', label: '女性', value: readPercent(portrait, ['gender.female', 'female']) },
+    { key: 'male', label: '男性', value: readPercent(portrait, ['gender.male', 'male']) },
   ].filter((item) => item.value != null)
-  const topAge = [...ageItems].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
-  const topGender = [...genderItems].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
-  const fakeRate = readNumber(fake, ['suspectedFakeRate', 'fakeRate'])
+  const fakeRate = readPercent(fake, ['suspectedFakeRate', 'fakeRate'])
   const fakeTone = fakeRate == null ? 'neutral' : fakeRate >= 40 ? 'danger' : fakeRate >= 20 ? 'warning' : 'success'
   const regionTotal = readNumber(region, ['total', 'countryCount', 'regionCount'])
   const regionItems = extractRegionItems(region)
-  const sampleUsers = readNumber(fake, ['totalUserCount'])
-    ?? readNumber(range, ['commentUsersCount', 'totalUserCount'])
-  const sampleVideos = readNumber(range, ['videosAnalyzed'])
-    ?? readNumber(fake, ['videoCount'])
   const fakeFacts = [
     { label: '分析视频', value: fmt(readNumber(fake, ['videoCount'])) },
     { label: '分析用户', value: fmt(readNumber(fake, ['totalUserCount'])) },
@@ -1346,12 +1340,17 @@ function AudienceAnalysisCard({ data }: { data: any }) {
     { label: '评论总数', value: fmt(readNumber(fake, ['totalCommentCount'])) },
     { label: '平均评论用户', value: fmtDecimal(readNumber(fake, ['avgCommentUserCount'])) },
     { label: '无地区用户', value: fmt(readNumber(fake, ['userWithoutCountryCount'])) },
-    { label: '无地区用户占比', value: fmtPercent(readNumber(fake, ['userWithoutCountryRate'])) },
+    { label: '无地区用户占比', value: fmtPercent(readPercent(fake, ['userWithoutCountryRate'])) },
   ].filter((item) => item.value !== '-')
+  const hasFakeRadar = fakeRate != null || fakeFacts.length > 0
   const rangeFacts = [
     { label: '采样倍数', value: fmt(readNumber(range, ['multiplier'])) },
     { label: '已分析视频', value: fmt(readNumber(range, ['videosAnalyzed'])) },
+    { label: '已分析帖子', value: fmt(readNumber(range, ['postsAnalyzed'])) },
     { label: '评论用户', value: fmt(readNumber(range, ['commentUsersCount'])) },
+    { label: '点赞抽样用户', value: fmt(readNumber(range, ['sampledLikesCount'])) },
+    { label: '粉丝抽样用户', value: fmt(readNumber(range, ['followerUsersCount'])) },
+    { label: '样本总用户数', value: fmt(readNumber(range, ['totalUsersAnalyzed'])) },
   ].filter((item) => item.value !== '-')
 
   return (
@@ -1367,20 +1366,36 @@ function AudienceAnalysisCard({ data }: { data: any }) {
         <DownloadLink url={data.exportUrl} label="下载 Excel" />
       </div>
 
-      <div className="audience-highlight-grid">
-        <AudienceMetric value={topAge ? `${fmtPercent(topAge.value)}` : '-'} label={topAge ? `核心年龄：${topAge.label}` : '核心年龄'} />
-        <AudienceMetric value={topGender ? `${fmtPercent(topGender.value)}` : '-'} label={topGender ? `${topGender.label}占比` : '性别占比'} />
-        <AudienceMetric value={fakeRate != null ? `${fmtPercent(fakeRate)}` : '-'} label="疑似假粉率" tone={fakeTone} />
-        <AudienceMetric value={sampleUsers != null ? fmt(sampleUsers) : '-'} label="分析用户样本" />
-      </div>
+      {(rangeFacts.length > 0 || data.updatedAt) && (
+        <div className="audience-meta-line">
+          {rangeFacts.map((f, i) => (
+            <span key={f.label}>
+              {i > 0 && <span className="audience-meta-dot">·</span>}
+              {f.label} {f.value}
+            </span>
+          ))}
+          {data.updatedAt && (
+            <span>
+              {rangeFacts.length > 0 && <span className="audience-meta-dot">·</span>}
+              分析于 {fmtDate(data.updatedAt)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {fakeRate != null && (
+        <div className="audience-highlight-grid">
+          <AudienceMetric value={`${fmtPercent(fakeRate)}`} label="疑似假粉率" tone={fakeTone} />
+        </div>
+      )}
 
       <div className="audience-panel-grid">
-        <div className="audience-panel">
+        <div className="audience-panel audience-panel-profile">
           <div className="audience-panel-title">用户画像</div>
           <AudienceBars items={ageItems} />
           <AudienceBars items={genderItems} />
         </div>
-        <div className="audience-panel">
+        <div className="audience-panel audience-panel-region">
           <div className="audience-panel-title">地区分布</div>
           <div className="audience-region-total">{regionTotal != null ? fmt(regionTotal) : '-'}</div>
           <div className="audience-region-label">覆盖地区</div>
@@ -1393,18 +1408,13 @@ function AudienceAnalysisCard({ data }: { data: any }) {
             </div>
           )}
         </div>
-        <div className="audience-panel">
-          <div className="audience-panel-title">风险雷达</div>
-          <div className={`audience-risk ${fakeTone}`}>
-            {fakeRate != null ? `${fmtPercent(fakeRate)} 疑似假粉` : '暂无假粉数据'}
+        {hasFakeRadar && (
+          <div className="audience-panel audience-panel-risk">
+            <div className="audience-panel-title">风险雷达</div>
+            {fakeRate != null && <div className={`audience-risk ${fakeTone}`}>{fmtPercent(fakeRate)} 疑似假粉</div>}
+            <AudienceFactGrid items={fakeFacts} />
           </div>
-          <AudienceFactGrid items={fakeFacts} />
-        </div>
-        <div className="audience-panel">
-          <div className="audience-panel-title">采集范围</div>
-          <AudienceFactGrid items={rangeFacts} />
-          {data.updatedAt && <div className="audience-updated">分析时间：{fmtDate(data.updatedAt)}</div>}
-        </div>
+        )}
       </div>
     </div>
   )
@@ -1476,10 +1486,35 @@ function parseNumericValue(value: unknown): number | null {
   return Number(normalized)
 }
 
+/** 百分比专用解析：字符串自带 % 号（如 "0.79%"）说明后端已经是百分比数值，不能再当比例乘 100；
+ *  只有不带 % 的裸数字（如 0.31）才按比例猜测换算，避免 0.79% 被误判成 79% */
+function parsePercentValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value > 0 && value <= 1 ? value * 100 : value
+  }
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  const hadPercentSign = trimmed.endsWith('%')
+  const normalized = trimmed.replace(/,/g, '').replace(/%$/, '')
+  if (!normalized || !Number.isFinite(Number(normalized))) return null
+  const num = Number(normalized)
+  if (hadPercentSign) return num
+  return num > 0 && num <= 1 ? num * 100 : num
+}
+
+function readPercent(obj: any, paths: string[]): number | null {
+  for (const path of paths) {
+    const directValue = obj?.[path]
+    const nestedValue = path.split('.').reduce<any>((current, part) => current?.[part], obj)
+    const parsed = parsePercentValue(directValue ?? nestedValue)
+    if (parsed != null) return parsed
+  }
+  return null
+}
+
 function fmtPercent(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '-'
-  const normalized = value > 0 && value <= 1 ? value * 100 : value
-  return `${Number.isInteger(normalized) ? normalized : normalized.toFixed(1)}%`
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}%`
 }
 
 function fmtDecimal(value: number | null | undefined): string {
@@ -1489,8 +1524,7 @@ function fmtDecimal(value: number | null | undefined): string {
 
 function clampPercent(value: number | null | undefined): number {
   if (value == null || !Number.isFinite(value)) return 0
-  const normalized = value > 0 && value <= 1 ? value * 100 : value
-  return Math.max(0, Math.min(100, normalized))
+  return Math.max(0, Math.min(100, value))
 }
 
 function extractRegionItems(region: any): { label: string; value?: number }[] {
@@ -1522,7 +1556,7 @@ function collectRegionItems(value: any, out: { label: string; value?: number }[]
 
   for (const [key, child] of Object.entries(value)) {
     if (isIgnoredRegionKey(key)) continue
-    const amount = parseNumericValue(child)
+    const amount = parsePercentValue(child)
     if (amount != null && isRegionDistributionKey(key, parentKey)) {
       out.push({ label: displayRegionLabel(key), value: amount })
       continue
@@ -1547,16 +1581,10 @@ function regionLabelFromObject(item: Record<string, unknown>): string {
 }
 
 function regionValueFromObject(item: Record<string, unknown>): number | null {
-  return parseNumericValue(
-    item.rate ??
-      item.ratio ??
-      item.percent ??
-      item.percentage ??
-      item.proportion ??
-      item.share ??
-      item.value ??
-      item.count,
-  )
+  // rate/ratio/percent... 是占比字段要走百分比解析；value/count 是原始计数，不能按百分比猜测换算
+  const percent = parsePercentValue(item.rate ?? item.ratio ?? item.percent ?? item.percentage ?? item.proportion ?? item.share)
+  if (percent != null) return percent
+  return parseNumericValue(item.value ?? item.count)
 }
 
 function isIgnoredRegionKey(key: string): boolean {
@@ -1577,72 +1605,138 @@ function isRegionDistributionKey(key: string, parentKey: string): boolean {
   return /^[A-Z]{2,3}$/.test(key) || /^T[1-3]$/i.test(key)
 }
 
+// UK 不是标准 ISO 3166-1 alpha-2 码（标准码是 GB），Intl.DisplayNames 不认识，单独兜底
+const REGION_CODE_ALIASES: Record<string, string> = { UK: 'GB' }
+
+const regionDisplayNames =
+  typeof Intl !== 'undefined' && 'DisplayNames' in Intl
+    ? new Intl.DisplayNames(['zh-CN'], { type: 'region' })
+    : null
+
+/** 把后端给的 ISO 地区码翻成中文名，覆盖全量国家/地区而不是维护一张写死的小表 */
 function displayRegionLabel(label: string): string {
   const code = label.toUpperCase()
-  const names: Record<string, string> = {
-    US: '美国',
-    BR: '巴西',
-    IN: '印度',
-    ID: '印度尼西亚',
-    IT: '意大利',
-    NG: '尼日利亚',
-    JP: '日本',
-    KR: '韩国',
-    GB: '英国',
-    UK: '英国',
-    CA: '加拿大',
-    AU: '澳大利亚',
-    DE: '德国',
-    FR: '法国',
-    ES: '西班牙',
-    MX: '墨西哥',
-    PH: '菲律宾',
-    TH: '泰国',
-    VN: '越南',
-    MY: '马来西亚',
-    SG: '新加坡',
-    T1: 'T1 地区',
-    T2: 'T2 地区',
-    T3: 'T3 地区',
+  if (/^T[1-3]$/.test(code)) return `${code} 地区`
+  if (/^[A-Z]{2}$/.test(code) && regionDisplayNames) {
+    try {
+      const name = regionDisplayNames.of(REGION_CODE_ALIASES[code] ?? code)
+      if (name && name !== code) return `${name} (${code})`
+    } catch {
+      // 不是合法地区码，原样返回
+    }
   }
-  return names[code] ? `${names[code]} (${code})` : label
+  return label
 }
 
 const FAKE_RESULT_LABELS: Record<string, string> = {
-  realPeople: '真人',
+  realpeople: '真人',
   influencer: '网红',
-  fakeAccounts: '疑似假号',
+  fakeaccounts: '疑似假号',
+}
+
+/** backend 返回的判定值大小写/空格不固定（"Real People" / realPeople 都见过），统一归一化后再查表 */
+function fakeResultLabel(key: string): string {
+  return FAKE_RESULT_LABELS[key.replace(/\s+/g, '').toLowerCase()] ?? key
+}
+
+/** classifyUser/calculateFakeScore（insInfo.service.ts）打分逻辑里固定的英文短语，逐条对照翻译 */
+const FAKE_REASON_PHRASES: Array<[RegExp, string]> = [
+  [/^Has Avatar$/, '有头像'],
+  [/^Public Account$/, '公开账号'],
+  [/^Followers > 3k$/, '粉丝数 > 3000'],
+  [/^Following\/Follower Ratio < 0\.5$/, '关注/粉丝比 < 0.5'],
+  [/^Anonymous\/Default Avatar \(-(\d+)\)$/, '匿名/默认头像 (-$1)'],
+  [/^Username Contains Many Digits \(-1\)$/, '用户名含大量数字 (-1)'],
+  [/^Zero Posts \(-1\)$/, '发帖数为 0 (-1)'],
+  [/^Zero Followers \(-1\)$/, '粉丝数为 0 (-1)'],
+  [/^Zero Following \(-1\)$/, '关注数为 0 (-1)'],
+  [/^Posts > 50 \(\+4\)$/, '发帖数 > 50 (+4)'],
+  [/^5 <= Posts <= 50 \(\+2\)$/, '发帖数 5-50 (+2)'],
+  [/^1 <= Posts < 5 \(\+1\)$/, '发帖数 1-4 (+1)'],
+  [/^Has Bio \(\+1\)$/, '有个人简介 (+1)'],
+  [/^Full Name Differs from Username \(\+1\)$/, '昵称与用户名不同 (+1)'],
+  [/^Followers > 60 \(\+2\)$/, '粉丝数 > 60 (+2)'],
+  [/^20 <= Followers <= 60 \(\+1\)$/, '粉丝数 20-60 (+1)'],
+  [/^Healthy Following\/Follower Ratio \(\+1\)$/, '关注/粉丝比健康 (+1)'],
+  [/^Has External Link \(\+4\)$/, '有外部链接 (+4)'],
+  [/^Has Highlight Reels \(\+4\)$/, '有精选故事 (+4)'],
+  [/^Private Account$/, '私密账号'],
+]
+
+function translateFakeReasonClause(clause: string): string {
+  const trimmed = clause.trim()
+  for (const [pattern, replacement] of FAKE_REASON_PHRASES) {
+    const match = trimmed.match(pattern)
+    if (match) return match[1] != null ? replacement.replace('$1', match[1]) : replacement
+  }
+  return trimmed
+}
+
+/** "Score: 10 (Has Bio (+1), ...)" 这类打分理由翻成中文；未识别的短语原样保留，不吞信息 */
+function translateFakeReason(reason: string | null | undefined): string {
+  if (!reason) return '-'
+  const scored = reason.match(/^Score:\s*(-?\d+)\s*\((.*)\)$/)
+  if (scored) {
+    const [, score, inner] = scored
+    const clauses = inner ? inner.split(',').map(translateFakeReasonClause) : []
+    return `评分 ${score}${clauses.length ? `（${clauses.join('、')}）` : ''}`
+  }
+  return reason.split(',').map(translateFakeReasonClause).join('、')
+}
+
+// 好 → 中性 → 风险的固定阅读顺序，不跟着 backend JSON 的 key 顺序随意摆
+const FAKE_RESULT_ORDER = ['realpeople', 'influencer', 'fakeaccounts']
+
+function fakeResultTone(key: string, pct: number): 'neutral' | 'success' | 'warning' | 'danger' {
+  if (key.replace(/\s+/g, '').toLowerCase() !== 'fakeaccounts') return 'neutral'
+  return pct >= 40 ? 'danger' : pct >= 20 ? 'warning' : 'success'
 }
 
 function FakeDetectionCard({ data }: { data: any }) {
   const breakdown: Record<string, number> = data.breakdown ?? {}
   const accounts: any[] = data.accounts ?? []
   const total = data.sampleTotal || 1
+  const items = Object.entries(breakdown).sort(
+    ([a], [b]) =>
+      FAKE_RESULT_ORDER.indexOf(a.replace(/\s+/g, '').toLowerCase()) -
+      FAKE_RESULT_ORDER.indexOf(b.replace(/\s+/g, '').toLowerCase()),
+  )
   return (
     <div className="card">
       <div className="card-title">
         假粉检测（{data.mode === 'audience' ? '受众' : '帖子点赞'}）{data.fromCache ? ' · 缓存结果' : ''}
       </div>
       {data.target && <div className="muted">对象：{data.target}</div>}
-      <StatGrid
-        items={Object.entries(breakdown).map(([k, v]) => ({
-          key: k,
-          value: `${Math.round((v / total) * 100)}%`,
-          label: `${FAKE_RESULT_LABELS[k] ?? k}（${v}）`,
-        }))}
-      />
+      <div className="audience-highlight-grid">
+        {items.map(([k, v]) => {
+          const pct = Math.round((v / total) * 100)
+          return <AudienceMetric key={k} value={`${pct}%`} label={`${fakeResultLabel(k)}（${v}）`} tone={fakeResultTone(k, pct)} />
+        })}
+      </div>
       <details>
         <summary>抽样明细（{accounts.length}）</summary>
         <DataTable
           columns={[
-            { header: '账号', cell: (a: any) => a.username },
-            { header: '判定', cell: (a: any) => FAKE_RESULT_LABELS[a.result] ?? a.result },
-            { header: '理由', cell: (a: any) => a.reason ?? '-' },
+            { header: '账号', cell: (a: any) => <FakeAccountLink account={a} /> },
+            { header: '判定', cell: (a: any) => fakeResultLabel(a.result) },
+            { header: '理由', cell: (a: any) => translateFakeReason(a.reason) },
           ]}
           rows={accounts}
         />
       </details>
     </div>
+  )
+}
+
+function FakeAccountLink({ account }: { account: any }) {
+  const username = String(account.username ?? account.handler ?? account.uniqueId ?? '').replace(/^@/, '').trim()
+  if (!username) return '-'
+  const href = safeHref(account.profileUrl ?? account.url ?? `https://instagram.com/${username}`)
+  if (!href) return username
+  return (
+    <a href={href} target="_blank" rel="noreferrer">
+      {username}
+    </a>
   )
 }
 

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { BackendClient } from '../backend/client.js'
-import { defineTool } from './types.js'
+import { defineTool, type ToolContext } from './types.js'
 import { compactKol, ensureProject, requireParam } from './helpers.js'
 
 const DISCOVERY_PLATFORMS = ['TIKTOK', 'YOUTUBE', 'INSTAGRAM'] as const
@@ -75,8 +75,14 @@ const searchKolsInput = z.object({
   keywords: z.array(z.string().max(100)).max(20).optional().describe('检索关键词（OR 关系）；走智能搜索流程时传用户确认的博主原文词'),
   canonicalTags: z.array(z.string()).max(50).optional().describe('parse_search_intent 解析并经用户确认的规范化标签名'),
   expandedQuery: z.string().optional().describe('parse_search_intent 返回的 expandedQuery，原样透传'),
-  regions: z.array(z.string()).optional().describe('地区（ISO 两位国家码，如 US、JP）'),
-  languages: z.array(z.string()).optional().describe('语言代码，如 en、zh'),
+  regions: z
+    .array(z.string())
+    .optional()
+    .describe('地区（ISO 两位国家码，如 US、JP）。用户没有明确要求特定国家/地区（包括说"全球"）时不要传这个字段，不要自己猜或帮用户圈定国家范围'),
+  languages: z
+    .array(z.string())
+    .optional()
+    .describe('语言代码，如 en、zh。用户没有明确要求内容语言时不要传这个字段，不要自己猜'),
   followers: rangeSchema.optional().describe('粉丝数范围'),
   averageViews: rangeSchema.optional().describe('平均播放量范围，TikTok/YouTube 使用'),
   averageLikes: rangeSchema.optional().describe('平均点赞数范围，Instagram 使用'),
@@ -158,6 +164,12 @@ export function buildSearchBody(input: SearchKolsInput, projectId: string): Reco
   }
 }
 
+// 同一轮对话里，模型有时会在 search_kols 拿到 0 结果后原样重试同一组参数好几次
+// （常见诱因：自己加的 regions/languages 过滤过窄），既浪费配额也没有意义。
+// 按 ctx 记住"上一次 0 结果的入参"，命中就直接拦下并提示换参数，逼它别死循环重试；
+// WeakMap 挂在 ctx（每轮 runAgentTurn 新建一个）上，本轮结束后随 ctx 一起被回收
+const lastZeroResultInput = new WeakMap<ToolContext, string>()
+
 export const searchKols = defineTool({
   name: 'search_kols',
   description:
@@ -169,6 +181,17 @@ export const searchKols = defineTool({
   summarize: (input) =>
     `在 ${input.platform} 搜索达人：${input.kolDescription.slice(0, 60)}`,
   execute: async (input, ctx) => {
+    const inputKey = JSON.stringify(input)
+    if (lastZeroResultInput.get(ctx) === inputKey) {
+      return {
+        forModel: {
+          error:
+            '上一次用完全相同的参数搜索也是 0 结果，原样重试不会有不同结果，本次调用已被拦截、未消耗配额。' +
+            '必须先调整参数再重试：最常见的问题是 regions/languages 过滤过窄——用户没有明确要求特定国家/语言时不要传这两个字段；' +
+            '也可以尝试放宽 followers/averageViews 等范围，或去掉 attributeTags、hasContactInfo 等次要条件。',
+        },
+      }
+    }
     const projectId = await ensureProject(ctx, input.projectId)
     const batchCount = getBatchCount(input)
     const maxResults = Math.min(input.maxResults ?? batchCount * 50, 500)
@@ -217,6 +240,11 @@ export const searchKols = defineTool({
       return { forModel: { projectId, taskId: task.id, error: `搜索失败：${polled.message || '无更多结果'}` } }
     }
     const result = await readSearchResults(ctx.backend, { projectId, platform: input.platform, maxResults })
+    if (result.total === 0) {
+      lastZeroResultInput.set(ctx, inputKey)
+    } else {
+      lastZeroResultInput.delete(ctx)
+    }
     return buildSearchResult({
       projectId,
       taskId: task.id,

@@ -55,6 +55,13 @@ export async function runAgentTurn(args: {
     emit,
   }
 
+  // 本轮（含 SDK 内部多步）工具调用去重：模型偶尔会在一次生成里并发发出一堆
+  // toolName+参数完全相同的调用（曾实测一次生成里 18 次一模一样的 export_comments），
+  // 或者跨步骤原样重试。按 "toolName + 规范化参数" 缓存执行中的 Promise（必须缓存 Promise
+  // 而非结果——并发发出的重复调用不会等第一个执行完，缓存 Promise 才能让它们真正共享同一次执行，
+  // 而不是各自跑一遍），命中就直接复用那次的结果，不再重复打后端。
+  // 参考 LangGraph ToolNode 的 tool-call dedup 中间件设计。
+  const toolCallCache = new Map<string, Promise<unknown>>()
   const tools = Object.fromEntries(
     getTools().map((t) => [
       t.name,
@@ -69,14 +76,22 @@ export async function runAgentTurn(args: {
           if (!parsed.success) {
             return { error: formatValidationError(t.name, parsed.error) }
           }
-          try {
-            return await executeWithGate(t, parsed.data, ctx, store)
-          } catch (err) {
-            // 工具失败喂回模型，让它向用户解释/换路子，而不是整轮崩掉
-            // 同时补发 tool-result，否则前端工具卡片会永远停在"正在执行"
-            emit({ type: 'tool-result', toolName: t.name })
-            return { error: err instanceof Error ? err.message : String(err) }
-          }
+          const cacheKey = `${t.name}:${stableStringify(parsed.data)}`
+          const cached = toolCallCache.get(cacheKey)
+          if (cached) return cached
+
+          const run = (async () => {
+            try {
+              return await executeWithGate(t, parsed.data, ctx, store)
+            } catch (err) {
+              // 工具失败喂回模型，让它向用户解释/换路子，而不是整轮崩掉
+              // 同时补发 tool-result，否则前端工具卡片会永远停在"正在执行"
+              emit({ type: 'tool-result', toolName: t.name })
+              return { error: err instanceof Error ? err.message : String(err) }
+            }
+          })()
+          toolCallCache.set(cacheKey, run)
+          return run
         },
       }),
     ]),
@@ -191,4 +206,14 @@ async function loadHistory(store: SessionStore, sessionId: string): Promise<Mode
   // 配对兜底：中途崩溃/部分落库留下的孤儿 tool-call/tool-result 会让该会话每轮
   // 都被模型 API 拒绝（永久变砖），加载时修复
   return repairToolPairing(rows.map((r) => ({ role: r.role, content: r.content }) as ModelMessage))
+}
+
+/** 对象 key 递归排序后再 JSON.stringify：同一组参数不因字段顺序不同被误判成"不同调用" */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>).sort()
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
 }

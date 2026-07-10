@@ -124,19 +124,35 @@ export default function Chat({
       .then(({ session, messages, pendingActions }) => {
         if (cancelled) return
         setCost({ spent: session.quotaSpent, cap: 0 })
-        const restored: ChatMessage[] = messages
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
-          .map((m) => ({
-            role: m.role as 'user' | 'assistant',
-            text: contentToText(m.content),
-            activities: (m.display ?? []).map((d) => ({
-              toolName: d.kind,
-              status: 'done' as const,
-              display: d,
-            })),
-            confirmations: [],
-          }))
-          .filter((m) => m.text || m.activities.length)
+        // 一次多步工具调用在 DB 里是好几条 assistant 消息行（每步一条 tool-call 前缀，
+        // 通常只有 "\n\n" 这种空白文本；display 卡片全部落在本轮最后一条上）。
+        // 实时对话按 turnId 把这些步骤合并成一个 turn，这里恢复历史记录时也要同样合并，
+        // 否则一次多步调用会拆成好几个"光秃秃头像 + 空白"的独立 turn（同一逻辑见 onEvent 的 updateLast）
+        const restored: ChatMessage[] = []
+        let pendingAssistant: { texts: string[]; activities: ChatMessage['activities'] } | null = null
+        const flushAssistant = () => {
+          if (!pendingAssistant) return
+          // 拼接本轮所有分段文本，和实时流式的 text-delta 累加（m.text + event.delta）保持一致行为
+          const text = pendingAssistant.texts.join('')
+          if (text.trim() || pendingAssistant.activities.length) {
+            restored.push({ role: 'assistant', text, activities: pendingAssistant.activities, confirmations: [] })
+          }
+          pendingAssistant = null
+        }
+        for (const m of messages) {
+          if (m.role === 'user') {
+            flushAssistant()
+            restored.push({ role: 'user', text: contentToText(m.content), activities: [], confirmations: [] })
+          } else if (m.role === 'assistant') {
+            pendingAssistant ??= { texts: [], activities: [] }
+            pendingAssistant.texts.push(contentToText(m.content))
+            pendingAssistant.activities.push(
+              ...(m.display ?? []).map((d) => ({ toolName: d.kind, status: 'done' as const, display: d })),
+            )
+          }
+          // role === 'tool'：结果卡片已经合并到本轮最后一条 assistant 消息的 display 里，这里跳过
+        }
+        flushAssistant()
         // 重建未决的高风险操作确认卡片（挂在最后一条 assistant 消息上）
         if (pendingActions?.length) {
           const confirmations = pendingActions.map((action) => ({

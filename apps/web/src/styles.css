@@ -450,7 +450,7 @@ textarea {
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 56px 24px 12px;
+  padding: 56px 24px 112px;
 }
 .message-list > * {
   max-width: 860px;
@@ -461,7 +461,7 @@ textarea {
   flex: 1;
   max-height: none;
   overflow-y: auto;
-  padding: 56px 24px 12px;
+  padding: 56px 24px 112px;
 }
 .chat.has-results .message-list > * {
   max-width: 760px;
@@ -1748,18 +1748,19 @@ td {
   margin-bottom: 4px;
 }
 .audience-card {
-  padding: 18px;
+  padding: 16px;
+  background: #fff;
 }
 .audience-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .audience-title {
   margin-bottom: 2px;
-  font-size: 16px;
+  font-size: 17px;
 }
 .audience-subtitle {
   display: flex;
@@ -1769,18 +1770,29 @@ td {
   color: var(--subtle);
   font-size: 13px;
 }
+.audience-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+  color: var(--subtle);
+  font-size: 12px;
+}
+.audience-meta-dot {
+  margin: 0 4px;
+}
 .audience-highlight-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
 }
 .audience-metric {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  background: #fafbfe;
+  border: 1px solid #edf0f5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
 }
 .audience-metric.success {
   background: #f2fbf6;
@@ -1795,7 +1807,7 @@ td {
   border-color: #f3b5a4;
 }
 .audience-metric-value {
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1.15;
   font-weight: 760;
   color: var(--text);
@@ -1807,15 +1819,20 @@ td {
 }
 .audience-panel-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.85fr);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 10px;
+  align-items: start;
 }
 .audience-panel {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 1px solid #edf0f5;
+  border-radius: 10px;
   padding: 12px;
-  background: var(--surface);
+  background: #fff;
+}
+.audience-panel-region,
+.audience-panel-risk {
+  background: #fbfcff;
 }
 .audience-panel-title {
   margin-bottom: 10px;
@@ -1841,7 +1858,7 @@ td {
   font-size: 12px;
 }
 .audience-bar-track {
-  height: 8px;
+  height: 7px;
   overflow: hidden;
   border-radius: 999px;
   background: #eef2f7;
@@ -1861,7 +1878,7 @@ td {
   font-size: 12px;
 }
 .audience-region-total {
-  font-size: 28px;
+  font-size: 26px;
   line-height: 1;
   font-weight: 760;
 }
@@ -1875,6 +1892,8 @@ td {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
+  max-height: 116px;
+  overflow: hidden;
 }
 .audience-region-list span {
   border-radius: 999px;
@@ -1921,13 +1940,13 @@ td {
 }
 .audience-fact-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
 .audience-fact {
   min-width: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   padding: 8px 10px;
   background: #f7f8fb;
 }
@@ -1943,13 +1962,8 @@ td {
   display: block;
   margin-top: 2px;
   color: var(--text);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.25;
-}
-.audience-updated {
-  margin-top: 12px;
-  color: var(--subtle);
-  font-size: 12px;
 }
 .analysis-list {
   margin: 4px 0 0;
@@ -2526,6 +2540,10 @@ details summary {
   .requirements-checks {
     gap: 8px 16px;
     margin-top: 10px;
+  }
+  .audience-highlight-grid,
+  .audience-panel-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
   .assistant-turn {
     margin-bottom: 26px;
